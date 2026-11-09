@@ -1,0 +1,101 @@
+name: CI
+
+# push/PR마다 자동 검증:
+#   1) ARM 펌웨어 빌드 — phase_config.h 게이트 전부 OFF(기본 배포 상태)
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-firmware:
+    name: ARM build (gates ${{ matrix.gates }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gates: [OFF, ON, REALDRIVE]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arm-none-eabi-gcc toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi make
+          arm-none-eabi-gcc --version
+
+      - name: Set phase gates
+        run: |
+          f=Core/Inc/phase_config.h
+          set_gate() {
+            sed -i -E "s/^(#define $1[[:space:]]+)[01]\b/\1$2/" "$f"
+            grep -qE "^#define $1[[:space:]]+$2\b" "$f" \
+              || { echo "::error::$1 was not set to $2"; exit 1; }
+          }
+          if [ "${{ matrix.gates }}" = OFF ]; then V=0; else V=1; fi
+          for g in PHASE25_CAN_TX PHASE4_UART_PIPELINE PHASE45_UART_RX_CAN_TX \
+                   PHASE5_SD_LOGGING PHASE6_SAFETY PHASE7_VCU_LCD_BRIDGE \
+                   PHASE8_GPS PHASE9_ADC_SENSOR; do
+            set_gate "$g" "$V"
+          done
+          if [ "${{ matrix.gates }}" = ON ]; then
+            set_gate TEST_DUMMY_DATA 1
+          else
+            set_gate TEST_DUMMY_DATA 0
+          fi
+          grep -E '^#define (PHASE|TEMP|TEST)' "$f"
+
+      - name: Build
+        run: |
+          set -o pipefail
+          make -j"$(nproc)" 2>&1 | tee build.log
+
+      - name: Fail on warnings/errors in our own code
+        run: |
+          # Drivers/Middlewares/Lib은 CubeMX 생성 코드 또는 외부 드라이버
+          # (프로젝트 규칙상 원본 수정 금지) — 툴체인 버전에 따라 그쪽에서
+          # 뜨는 -Wmaybe-uninitialized 등 오탐성 경고까지 실패 조건에 넣지 않는다.
+          # 우리가 작성/수정하는 코드(Core, FileX/App, AZURE_RTOS/App 등)만 엄격 검사.
+          grep -iE 'error:|warning:' build.log > all_diagnostics.txt || true
+          grep -vE '^(Drivers/|Middlewares/|Lib/|FileX/Target/)' all_diagnostics.txt \
+            > our_diagnostics.txt || true
+
+          if [ -s our_diagnostics.txt ]; then
+            echo "::error::Warnings/errors in project-owned code:"
+            cat our_diagnostics.txt
+            exit 1
+          fi
+
+          if [ -s all_diagnostics.txt ]; then
+            echo "::warning::Vendor/generated-code warnings present (not failing build):"
+            cat all_diagnostics.txt
+          fi
+          echo "Project-owned code: 0 warnings/errors."
+
+      - name: Report binary size
+        run: arm-none-eabi-size build/WSC_Transmitter_Code_V1.elf
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-gates-${{ matrix.gates }}
+          path: |
+            build/*.elf
+            build/*.hex
+            build/*.bin
+          retention-days: 14
+
+  host-tests:
+    name: Host PC property tests (cobs/packet_builder)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile host test harness (native gcc, real source files)
+        run: |
+          gcc -std=c11 -Wall -Wextra -Wconversion \
+            -I tests/host/stub_include -I Core/Inc \
+            tests/host/test_main.c Core/Src/packet_builder.c Core/Src/cobs.c \
+            -o tests/host/test_host
+
+      - name: Run property tests
+        run: ./tests/host/test_host

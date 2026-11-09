@@ -1,0 +1,26 @@
+# Build artifacts
+/build/
+/Debug/
+/Release/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+
+# IDE / tool state
+.vscode/ipch/
+.metadata/
+*.launch
+
+# OS
+Thumbs.db
+.DS_Store
+
+# CAN 더미 노드 빌드 산출물 (tests/dummy_nodes/build_dummy.sh 가 생성)
+tests/dummy_nodes/*/build/
+
+# 호스트 테스트 빌드 산출물 (tests/host/README.md의 gcc 명령으로 생성)
+tests/host/test_host.exe
