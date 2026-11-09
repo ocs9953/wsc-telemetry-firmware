@@ -4,7 +4,7 @@
 
 STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 검증** 방식으로 구현한다. 각 Phase 완료 시 실제 보드에서 동작을 확인한 후 다음 Phase로 진행한다.
 
-## ⚡ 구현 상태: Phase 게이트 방식 (2026-07)
+## 구현 상태: Phase 게이트 방식 (2026-07)
 
 **잔여 태스크(6A, 7, 8, 10~16, 18)의 코드가 전부 미리 구현되어 있다.** 다만 tasks.md의 Phase 순서대로 보드에서 순차 검증할 수 있도록, 활성화 지점(스레드/큐 생성, 콜백, 시작 호출)이 **`Core/Inc/phase_config.h`의 게이트 매크로**로 비활성화(0)되어 있다 — 주석 처리와 동일한 효과지만 컴파일러로 켜짐/꺼짐 양쪽을 검증할 수 있다.
 
@@ -23,7 +23,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
 
 **구현 시 확정한 사항 (md와의 편차/가정 — 보드 테스트 시 확인):**
 1. **스레드 IWDG 리프레시는 '타임아웃 시'가 아니라 매 루프** (Phase 6 전): md대로 타임아웃 분기에서만 리프레시하면 데이터가 계속 흐르는 동안 그 분기를 영영 안 타서 IWDG(4초)가 만료된다. Phase 6 활성화 시 Alive-Flag 방식으로 자동 전환(`#if`).
-2. **데이터 패킷 KEY enum 신설** (`types.h`): `KEY_BMS_VOLT_STACK(0x00)/CURR_TEMP/FAULT/CELL_00_03(0x10)~`, `KEY_MPPT_IV_IN_OUT/TEMP_FLAGS`, `KEY_MOTOR_BUS_VEL/TEMP_FLAGS` — 소스별 128-key 네임스페이스(0x00~0x7F), 0x80+는 ERR_KEY. ⚠ **지상국 디코더와 번호 동기 필요** (스펙 잔여 항목).
+2. **데이터 패킷 KEY enum 신설** (`types.h`): `KEY_BMS_VOLT_STACK(0x00)/CURR_TEMP/FAULT/CELL_00_03(0x10)~`, `KEY_MPPT_IV_IN_OUT/TEMP_FLAGS`, `KEY_MOTOR_BUS_VEL/TEMP_FLAGS` — 소스별 128-key 네임스페이스(0x00~0x7F), 0x80+는 ERR_KEY. **지상국 디코더와 번호 동기 필요** (스펙 잔여 항목).
 3. **LCD TX CAN ID = `0x500` 확정** (2026-08-21, `ext_can_controller.c`) — Bus B는 우리 보드와 LCD 보드만 있는 독립 절연 버스라 ID를 우리 팀이 정한다. 0x5xx는 Bus A 사용 대역(0x040~0x07F, 0x123/0x223, 0x310~0x346, 0x401~0x417)과 겹치지 않고 FDCAN1 필터 상한(0x4FF) 바깥이라, LCD를 Bus A에 잘못 물려도 조용히 반쯤 동작하지 않고 확실히 무시된다. 예약: 0x501~0x50F(LCD 방향), 0x510~0x51F(LCD→본 보드 방향).
 4. **핀 극성 가정 2건** (보드 실측 후 매크로/비교값만 반전): SD_DETECT(PD0) = RESET이면 카드 있음(`SD_DETECT_ABSENT_LEVEL=SET`); Power_check(PD6) = RESET이면 전원 강하.
 5. **UART_RX_Thread는 task 12.1대로 Phase 4에서 생성**되지만 Phase 4.5 게이트 전까지 엔트리가 슬립만 한다.
@@ -38,13 +38,13 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - [x] 1.1 `Core/Inc/types.h` 생성 — 모든 공유 타입 정의
     - `LOG` 구조체 (16바이트, `__attribute__((packed))`), `_Static_assert(sizeof(LOG) == 16)`
     - `LOG_LEVEL` 열거형 (INFO=0, WARNING, ERROR, CRITICAL)
-    - `LOG_SOURCE` 열거형 — **2-티어 통합** (✅ 2025-06 확정):
+    - `LOG_SOURCE` 열거형 — **2-티어 통합** (2025-06 확정):
       - 데이터 소스: `SRC_SYS=0, SRC_BMS_BOT, SRC_BMS_TOP, SRC_MPPT1~3, SRC_MOTOR, SRC_RESERVED1/2`
       - 에러 소스: `SRC_CAN_ERR, SRC_SPI_ERR, SRC_UART_ERR, SRC_SD_ERR`
     - `LOG_KEY` 열거형 (KEY_SYS_BOOT, KEY_SYS_SD_INIT, ..., KEY_SYS_READY)
     - 에러 키 열거형 (ERR_CAN_BUS_OFF, ERR_CAN_RX_OVERFLOW, ERR_SPI_TIMEOUT, ERR_SPI_TRANSFER, ERR_UART_DMA, ERR_UART_QUEUE_FULL, ERR_SD_INIT, ERR_SD_WRITE, ERR_SD_NOT_DETECTED, ERR_SD_QUEUE_FULL, ERR_RTC_READ, ERR_INIT_FAIL, ERR_TIMEOUT, ERR_POWER_DOWN, ERR_WATCHDOG)
     - `DATETIME` 구조체 (year, month, date, hour, minute, second — 각 1바이트)
-    - `VehicleData_t` 중첩 구조체 (✅ 2025-06 확정): `BmsData_t bms_bot/bms_top`, `MpptData_t mppt[3]`, `MotorData_t motor`(🟠 잠정 virtual), Reg 예약. **전체 정수** — 규정 데이터 제외 float 필드 없음. 필드 목록은 `can-signal-summary.md` §7 참조.
+    - `VehicleData_t` 중첩 구조체 (2025-06 확정): `BmsData_t bms_bot/bms_top`, `MpptData_t mppt[3]`, `MotorData_t motor`(잠정 virtual), Reg 예약. **전체 정수** — 규정 데이터 제외 float 필드 없음. 필드 목록은 `can-signal-summary.md` §7 참조.
     - `SYSTEM_STATE` 구조체 (sd_ok, can_ok, uart_ok, mcp_ok, error)
     - _Requirements: 2.1, 2.2, 2.3, 5.1, 5.5, 5.6, 5.7, 10.4, 12.1_
   - [x] 1.2 모듈 헤더 파일 스켈레톤 생성
@@ -59,10 +59,10 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - example_code 폴더가 빌드에서 제외되어 있는지 확인
     - _Requirements: 10.1, 10.2_
 
-- [x] 1.4 **`Core/Inc/types.h` 재작업 — 확정된 스펙으로** (1.1 재오픈 — ✅ 2026-06 적용 완료, 전체 빌드 통과)
+- [x] 1.4 **`Core/Inc/types.h` 재작업 — 확정된 스펙으로** (1.1 재오픈 — 2026-06 적용 완료, 전체 빌드 통과)
   - `LOG_SOURCE`: 기존 `SYS/CAN_SRC/SPI_SRC/UART_SRC/SD_SRC/ADC_SRC`를 **통합 enum**으로 교체: 데이터 소스(`SRC_SYS, SRC_BMS_BOT, SRC_BMS_TOP, SRC_MPPT1~3, SRC_MOTOR, SRC_RESERVED1/2`) + 에러 소스(`SRC_CAN_ERR, SRC_SPI_ERR, SRC_UART_ERR, SRC_SD_ERR`)
-  - `VehicleData_t`: 평면 float 구조체를 **중첩 정수 구조체** `BmsData_t bms_bot/bms_top`, `MpptData_t mppt[3]`, `MotorData_t motor`(🟠 잠정 virtual, Reg 예약)으로 교체. `design.md` §types.h·`can-signal-summary.md` §7 참조.
-  - ⚠️ **연쇄 수정 필수 (함께 수정하지 않으면 빌드 깨짐)**: `can_receiver.c`·`ext_can_controller.c`가 현재 `battery_voltage`/`mppt_voltage` 등에 기록하고 `source=CAN_SRC/SPI_SRC`를 사용 중. CAN switch-case를 중첩 정수 필드(엔디안 `__REV`/`__REV16`, mV→cV ÷10, MPPT float→×100/×10 스케일링 수행) + 새 에러 소스로 재작성. Phase 2 CAN 매핑과 묶어 진행.
+  - `VehicleData_t`: 평면 float 구조체를 **중첩 정수 구조체** `BmsData_t bms_bot/bms_top`, `MpptData_t mppt[3]`, `MotorData_t motor`(잠정 virtual, Reg 예약)으로 교체. `design.md` §types.h·`can-signal-summary.md` §7 참조.
+  - **연쇄 수정 필수 (함께 수정하지 않으면 빌드 깨짐)**: `can_receiver.c`·`ext_can_controller.c`가 현재 `battery_voltage`/`mppt_voltage` 등에 기록하고 `source=CAN_SRC/SPI_SRC`를 사용 중. CAN switch-case를 중첩 정수 필드(엔디안 `__REV`/`__REV16`, mV→cV ÷10, MPPT float→×100/×10 스케일링 수행) + 새 에러 소스로 재작성. Phase 2 CAN 매핑과 묶어 진행.
   - `StdFiltersNbr`: **2 유지** — 논리 ID 묶음 4개를 연속 구간 범위 필터 2개(0x100~0x2FF, 0x400~0x6FF)로 커버. `CAN_Receiver_Init()`의 `FilterID1/ID2` 값만 수정(생성코드 `fdcan.c` 불변). (req 1.5)
   - _Requirements: 2.1, 2.3, 5.5, 1.5_
 
@@ -80,17 +80,17 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - Rx FIFO 오버플로우 시 ERR_CAN_RX_OVERFLOW WARNING LOG 생성
     - CAN ID 목록은 플레이스홀더로 구현 (확정 후 업데이트)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 1.5_
-  - [x] 3.2 ✅ **BMS DETAIL(상세온도·쿨롱카운터)·MPPT aux·Motor DETAIL/SD_ONLY 파싱 추가** (2026-07)
+  - [x] 3.2 **BMS DETAIL(상세온도·쿨롱카운터)·MPPT aux·Motor DETAIL/SD_ONLY 파싱 추가** (2026-07)
     - `CAN_StoreBmsDetail()` 신설: 0x113/0x114(상세온도 A/B), 0x130~0x132(쿨롱카운터) + TOP 0x213/0x214/0x230~0x232. 오프셋은 `CAN DATA/BMS_CAN_ID_명세.xlsx` TEST_data 시트에서 직접 추출(기존 md 요약은 "FET_Temp, Internal_Temp, Avg_Temp 등"으로 뭉뚱그려져 있었음 — 정밀화).
     - `CAN_StoreMppt()`: +3/+4/+6(aux 12V/3V/MaxOut/MaxIn/PowerConn) 케이스 추가.
-    - `CAN_StoreMotor()`: 0x40C(DSP온도, DETAIL 무선) + 0x404~0x409/0x417(SD_ONLY 진단 6종, 🟠 잠정 스케일: 기존 Motor 컨벤션 적용) 케이스 추가.
+    - `CAN_StoreMotor()`: 0x40C(DSP온도, DETAIL 무선) + 0x404~0x409/0x417(SD_ONLY 진단 6종, 잠정 스케일: 기존 Motor 컨벤션 적용) 케이스 추가.
     - `types.h`: `BmsData_t`/`MpptData_t`/`MotorData_t`에 대응 필드 + `BMS_KEY`/`MPPT_KEY`/`MOTOR_KEY`에 대응 KEY 신설.
     - `timer_scheduler.c`: `Sched_EmitDetail()`에 신규 DETAIL 패킷 17개(무선) 추가, `Sched_EmitSdOnly()` 신설 + Motor SD_ONLY 진단 6개 패킷(SD_Queue 전용, 무선 미전송).
     - 무선 대역폭 재계산: PRIMARY 70 + DETAIL 25(기존 8 + 신규 17) = **95 pkt/s(56%)** — 기존 설계 추정치와 정확히 일치(설계 당시 이미 이 신호들을 예산에 반영했었음을 확인). (task 3.4에서 CAN 헬스 패킷 1개 추가로 96 pkt/s로 갱신됨)
-    - ✅ **크로스팀 이슈 해결**: xlsx 개요 시트의 BMS 보드(STM32U545) 비트타이밍 경고(1.667Mbit/s 오계산)는 타 팀과 통신 속도·설정 합의 완료로 해소됨(500kbps 통일). 상세: `can-signal-summary.md` 상단.
+    - **크로스팀 이슈 해결**: xlsx 개요 시트의 BMS 보드(STM32U545) 비트타이밍 경고(1.667Mbit/s 오계산)는 타 팀과 통신 속도·설정 합의 완료로 해소됨(500kbps 통일). 상세: `can-signal-summary.md` 상단.
     - BMS 쿨롱카운터는 전부 raw 값(물리 단위 환산은 BQ76972 데이터시트 확인 후 별도 작업).
     - _Requirements: 3.1, 3.2 (연장)_
-  - [x] 3.3 ✅ **WaveSculptor22 공식 매뉴얼 확보 후 Motor SD_ONLY 바이트 순서 오류 5건 정정** (2026-07)
+  - [x] 3.3 **WaveSculptor22 공식 매뉴얼 확보 후 Motor SD_ONLY 바이트 순서 오류 5건 정정** (2026-07)
     - `CAN DATA/TritiumWaveSculptor22_Manual.pdf`(사용자 추가) Appendix C(CAN Comms Protocol)를 직접 추출·대조.
     - 매뉴얼 규칙: 표에 먼저 나열된 변수 = bits 63..32(byte 4~7), 나중 변수 = bits 31..0(byte 0~3). task 3.2에서 이 순서를 반대로 가정해 아래 5곳이 바이트 순서 오류였음:
       - `CAN_ID_MOTOR_V_VECTOR`(0x405): Vd/Vq 바이트 순서 반대 → 수정
@@ -101,14 +101,14 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - PRIMARY/DETAIL 신호(Bus V/I, Velocity, Heat-sink/Motor Temp, DSP Temp, Odometer/AmpHours, Flags)는 매뉴얼 대조 결과 전부 기존 구현이 정확했음(우연이 아니라 일관된 컨벤션 적용 덕분).
     - `can-signal-summary.md`·`telemetry-signals.md` §4/§7 갱신: 매뉴얼 원문 출처 명시 + 정정된 오프셋 반영.
     - _Requirements: 3.1, 3.2 (연장)_
-  - [x] 3.4 ✅ **Status Information(0x401) 확장 필드 추가 — Active Motor·TX/RX 에러 카운터** (2026-07, 사용자 요청)
+  - [x] 3.4 **Status Information(0x401) 확장 필드 추가 — Active Motor·TX/RX 에러 카운터** (2026-07, 사용자 요청)
     - `CAN_StoreMotor()`의 `CAN_ID_MOTOR_FLAGS`(0x401) 케이스 확장: 기존 Limit/Error Flags(byte0-3)에 더해 Active Motor(byte4-5, u16), Transmit Error Count(byte6, u8), Receive Error Count(byte7, u8) 파싱 추가.
     - `types.h`: `MotorData_t`에 `can_rx_err_count`/`can_tx_err_count`/`active_motor` 필드, `MOTOR_KEY`에 `KEY_MOTOR_CAN_HEALTH`(0x11) 추가.
     - `timer_scheduler.c`: 신규 DETAIL 무선 패킷 1개(`KEY_MOTOR_CAN_HEALTH`) 추가 — Limit/Error Flags(#14, 이미 4슬롯 꽉 참)와 별도 패킷.
     - Identification Information(0x400, Serial Number/Tritium ID)은 사용자 요청으로 미구현 유지.
     - 무선 대역폭: DETAIL 25→26패킷, 합계 **96 pkt/s(56%)** — 여유 내.
     - _Requirements: 3.1, 3.2 (연장)_
-  - [x] 3.5 ✅ **BMS 셀 전압 + SD_ONLY 상세(CUV/COV/CB밸런싱/Safety·PF) 파싱·송출 추가** (2026-07, 전체 리뷰 발견 갭 해소)
+  - [x] 3.5 **BMS 셀 전압 + SD_ONLY 상세(CUV/COV/CB밸런싱/Safety·PF) 파싱·송출 추가** (2026-07, 전체 리뷰 발견 갭 해소)
     - 리뷰 발견: 스케줄러가 `cell_mv[16]`을 8패킷으로 송출 중이었으나 **정작 채우는 파싱(0x101~0x104/0x201~0x204)이 없어 0만 전송**되고 있었음 → `CAN_StoreBmsDetail()`에 셀 전압 케이스 추가로 해소.
     - 추가 구현(xlsx 정밀 오프셋 대조): CUV 스냅샷(0x140~0x143/0x240~0x243), COV 스냅샷(0x150~0x153/0x250~0x253), CB_Status1/2/3 밸런싱 비트맵(0x123·0x160~0x163·0x170~0x173 + TOP), Safety/PF Alert 상세(0x121/0x122 + TOP) — 전부 **SD_ONLY**(무선 미전송).
     - `types.h`: `BmsData_t`에 `cuv_mv[16]`/`cov_mv[16]`/`cb_status1~3`/Safety·PF u8×16 필드, `BMS_KEY`에 0x20~0x32 SD_ONLY 키 신설.
@@ -116,14 +116,14 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - `timer_scheduler.c`: 보드당 SD_ONLY 19패킷(CUV4+COV4+CB9+Safety/PF2) × 2보드 = 38패킷/s SD 큐 추가 (무선 대역폭 무영향, 96 pkt/s 유지).
     - `can-rx-data-current.md` 신설: 현재 코드가 실제 수신·파싱하는 CAN ID 전체 목록(BMS 62 + MPPT 21 + Motor 13). (2026-07-31 문서 정리에서 `can-signal-summary.md` §1.5로 흡수·통합되고 파일 자체는 삭제됨 — 아래 "문서 구조 정리" 참조.)
     - _Requirements: 3.1, 3.2, 8 (연장)_
-  - [x] 3.6 ✅ **무선 티어 재배치 + BMS(LV) 신규 + HV BMS TOP RUN ID 이전** (2026-07-13, `CAN DATA/CAN_수신_데이터_정리본.xlsx` + Prohelion D1000 Gen1 데이터시트 기준)
+  - [x] 3.6 **무선 티어 재배치 + BMS(LV) 신규 + HV BMS TOP RUN ID 이전** (2026-07-13, `CAN DATA/CAN_수신_데이터_정리본.xlsx` + Prohelion D1000 Gen1 데이터시트 기준)
     - **티어 재배치**(xlsx 기준): MPPT 0x612/0x615(온도·flags) PRIMARY→DETAIL, 0x613(12V/3V aux) DETAIL→SD_ONLY(신규 KEY_MPPT_MAXLIM로 0x614 분리); Motor 0x401(전체) DETAIL 통합(`KEY_MOTOR_CAN_HEALTH`→`KEY_MOTOR_STATUS`로 개명, Limit/Error까지 포함), 0x404 SD_ONLY→DETAIL, 0x407(BEMF) SD_ONLY→PRIMARY, 0x40E(Odo/Ah) PRIMARY 신규 추가(규정 10s 패킷과 병행).
-    - **BMS(LV) 신규**(Prohelion BMS D1000 Gen1, 리틀엔디안): `types.h`에 `SRC_BMS_LV`·`BmsLvData_t`·`BMS_LV_KEY`(고정 키는 `0x10+3×LV_MAX_CMU`에서 자동 파생 → CMU 증가 시 충돌 방지)·`LV_MAX_CMU`/`LV_MAX_CELLS`; `can_receiver.c`에 `CAN_StoreBmsLv()`(0x600 base, heartbeat/CMU/SoC/PackV·I/충전기/프리차지/MinMax/상태/팬/확장) + 디스패치 연결; `timer_scheduler.c`에 PRIMARY(SoC·PackV·I) + DETAIL(CMU·나머지) + SD_ONLY(확장·heartbeat) 송출 + 타임아웃 워치독. base 0x600·5S2P(LV_MAX_CMU=1) 가정 — 🟠 잠정.
-    - **HV BMS TOP RUN ID 이전**: 0x600~0x602 → **0x503~0x505** (LV base 0x600 충돌 회피). `CAN_ID_BMS_TOP_*` 상수 + BOT/TOP 프레임 인덱스 추출(`id-FAULT`)·디스패치 수정. ⚠ **실물 HV BMS 보드 재설정 필요**.
+    - **BMS(LV) 신규**(Prohelion BMS D1000 Gen1, 리틀엔디안): `types.h`에 `SRC_BMS_LV`·`BmsLvData_t`·`BMS_LV_KEY`(고정 키는 `0x10+3×LV_MAX_CMU`에서 자동 파생 → CMU 증가 시 충돌 방지)·`LV_MAX_CMU`/`LV_MAX_CELLS`; `can_receiver.c`에 `CAN_StoreBmsLv()`(0x600 base, heartbeat/CMU/SoC/PackV·I/충전기/프리차지/MinMax/상태/팬/확장) + 디스패치 연결; `timer_scheduler.c`에 PRIMARY(SoC·PackV·I) + DETAIL(CMU·나머지) + SD_ONLY(확장·heartbeat) 송출 + 타임아웃 워치독. base 0x600·5S2P(LV_MAX_CMU=1) 가정 — 잠정.
+    - **HV BMS TOP RUN ID 이전**: 0x600~0x602 → **0x503~0x505** (LV base 0x600 충돌 회피). `CAN_ID_BMS_TOP_*` 상수 + BOT/TOP 프레임 인덱스 추출(`id-FAULT`)·디스패치 수정. **실물 HV BMS 보드 재설정 필요**.
     - 무선 대역폭 재계산: PRIMARY 15 + DETAIL 40 = **115 pkt/s(68%)** (이전 96/56%에서 증가, 여유 내).
     - 문서 갱신: `can-signal-summary.md`(§1 필터·§2 BMS TOP ID·§3 MPPT·§4 Motor·§4.5 BMS(LV) 신설·§5 PRIMARY 목록·§8 대역폭·§9 잔여), `telemetry-signals.md`(상단 supersede 배너 + CAN ID 맵·티어 요약 정정). **지상국 디코더 재동기 필수.**
     - _Requirements: 3.1, 3.2 (연장)_
-  - [x] 3.7 ✅ **BMS(HV) CAN ID 전면 재배치** (2026-07-24, `CAN DATA/BMS_CAN_ID_명세_최신_PR31.xlsx` PR#31 기준 — 위 3.5/3.6의 0x500대·0x1xx/0x2xx·0x503~0x505 체계를 완전히 대체)
+  - [x] 3.7 **BMS(HV) CAN ID 전면 재배치** (2026-07-24, `CAN DATA/BMS_CAN_ID_명세_최신_PR31.xlsx` PR#31 기준 — 위 3.5/3.6의 0x500대·0x1xx/0x2xx·0x503~0x505 체계를 완전히 대체)
     - BMS(HV) 전체를 우선순위(PRIMARY/DETAIL/SD_ONLY) 기반 연속 대역 **0x040~0x07F**로 재배치. PRIMARY BOT 0x040~0x043(Fault/Volt/Curr/SOC)·TOP 0x044~0x047, DETAIL BOT 0x048~0x050·TOP 0x051~0x059(9개씩), SD_ONLY BOT 0x05A~0x06C·TOP 0x06D~0x07F(19개씩).
     - **경위**: 처음엔 SOC 없이 0x040~0x07D(62개)로 1차 배치 → SOC가 LEGACY(0x503/0x603→0x504)로 남아 MPPT·Motor보다 버스 우선순위가 낮은 문제 발견 → SOC를 PRIMARY로 편입 요청 → 팀이 RUN을 0x040~0x047 연속 8개로 재구성, TEST 전체 +2 이동(0x040~0x07F, 64개)해 최종 확정.
     - LEGACY 프레임(0x123/0x223 FET_Status/CHG/DSG/PDSG)만 파싱, CB_Status1은 여기서 분리되어 SD_ONLY 0x05C/0x06F로 이전. 그 외 0x111/112/120/133 계열(및 TOP 0x2xx)은 매칭 항목 없어 미파싱 유지.
@@ -134,7 +134,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - 문서 갱신: `can-signal-summary.md`·`can-rx-data-current.md`·`design.md`(en 포함)·`requirements.md`(en 포함)·`telemetry-signals.md`(en 포함) 전체 CAN ID 동기화. **지상국 디코더 재동기 필수**(SOC #16/#17 신규 패킷 포함). 실물 HV BMS/MPPT 보드가 새 ID로 재플래시됐는지 배포 전 확인 필요.
     - _Requirements: 3.1, 3.2 (연장)_
 
-  - [x] 3.8 ✅ **스케줄러 버스트 해소 + ISR 경량화** (2026-07-31, 전체 시스템 리뷰(코드 구조·최적화) 발견)
+  - [x] 3.8 **스케줄러 버스트 해소 + ISR 경량화** (2026-07-31, 전체 시스템 리뷰(코드 구조·최적화) 발견)
     - **발견한 결함**: `Timer_Scheduler_Tick()`이 `tick%10==0`인 틱에서 `tick%2==0`도 참이라 `Sched_EmitPrimary()`(17패킷)와 `Sched_EmitDetail()`(89패킷 = EmitBoth 40 + EmitSdOnly 49)을 **한 ISR 안에서 연속 실행**. UART 57건/SD 106건이 깊이 20/50 큐에 몰리는데, 소비 스레드(pri 5/10)는 ISR(pri 1) 중 드레인 불가 → **UART 65%·SD 53%가 매초 드롭**. `uart_full_latch`/`sd_full_latch` 때문에 경고는 초당 1회만 나가 로그에서 심각도가 가려져 있었음. `PHASE4_UART_PIPELINE=0`이라 실기판에서 미발현, 게이트를 켜는 즉시 발현하는 상태였음.
     - **수정 ① DETAIL 10 서브틱 분산**: 240줄짜리 단일 `Sched_EmitDetail()`을 논리 그룹 7개 함수로 분해(`Sched_EmitBmsDetailWireless`/`BmsCuvCov`/`BmsCbSafety`/`MpptDetail`/`MpptSdAndMotor`/`LvA`/`LvB`) 후 `Sched_EmitDetailStep(tick%10)`으로 100ms마다 하나씩 발행. **그룹별 1초 주기는 유지**되고 ISR당 최대 발행량만 89→12로 감소. PRIMARY(짝수 틱)와 겹치지 않게 큰 그룹을 홀수 스텝에 배치. 타임아웃 검사는 부하 최저인 step 5로 이동. 발행 총량은 분해 전과 동일(EmitBoth 40 / EmitSdOnly 49)함을 확인.
     - **수정 ② 큐 메시지 32B→16B**: `LOG`가 16B인데 메시지가 8 ULONG(32B)이라 절반이 패딩이었음. `types.h`에 `LOG_QUEUE_MSG_WORDS`(=4) + `_Static_assert` 추가, 스토리지 총량은 그대로 두고 **깊이만 2배**(UART 20→40, SD 50→100). `ULONG msg[8]` 지역변수 10곳 일괄 교체.
@@ -149,7 +149,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
       - **`design.md` 메모리 예산 오류 정정**: UART_Queue/SD_Queue 스토리지가 `tx_app_byte_pool` 사용처로 적혀 있었으나 실제로는 **BSS 정적 배열**(`static ULONG uart_queue_storage[]`)이다. byte pool에서 할당되는 건 스레드 스택뿐. 합계도 ~8.4KB → ~5.4KB로 정정. 아울러 전체 RAM 사용률이 768KB 중 7% 수준이라 **큐 깊이 확장에 RAM 제약이 없음**을 명시.
     - _Requirements: 6.1~6.8, 7.5, 7.7, 9.7 (연장)_
 
-  - [x] 3.9 ✅ **스펙 문서 구조 정리 — 8개 파일의 CAN 스펙 3중 중복 해소** (2026-07-31, 사용자 지적)
+  - [x] 3.9 **스펙 문서 구조 정리 — 8개 파일의 CAN 스펙 3중 중복 해소** (2026-07-31, 사용자 지적)
     - **발견한 문제**: CAN ID·신호 상세가 `can-signal-summary.md`·`can-rx-data-current.md`·`telemetry-signals.md` 3개 문서에 각각 다른 형식으로 중복되어 있었고, `telemetry-signals.md`는 스스로 "§5~7은 구버전, 정본은 can-signal-summary.md"라고 선언하면서도 그 구버전 내용을 그대로 남겨두고 있었음. 코드 주석도 SSOT를 파일마다 다르게 지목(`can_receiver.c`는 design.md, `timer_scheduler.c`는 can-signal-summary.md+telemetry-signals.md). CAN ID가 바뀔 때마다 최대 7개 파일을 손으로 맞춰야 했음(이번 세션의 스케줄러 수정 1건에도 7개 파일 수정).
     - **원칙**: `requirements.md`(요구사항 정의)/`design.md`(아키텍처 설계)/`tasks.md`(수행 이력)의 3분할 역할은 유지. 이 셋에 새어 들어와 있던 CAN ID 상세만 제거하고, 그 상세를 담당하는 **별도 문서군**(can-signal-summary/can-rx-data-current/telemetry-signals)을 하나로 통합.
     - **`can-rx-data-current.md` 삭제**: 내용(대분류별 CAN ID 빠른조회 표 + 합계 66+21+13+14=114)을 `can-signal-summary.md` 신설 §1.5로 흡수. 이제 CAN ID 상세의 **유일한 SSOT**.
@@ -185,7 +185,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
       0 이라 재현되지 않아 **Phase 4 로 이관**.
     - IWDG 주의사항은 `TEMP_IWDG_REFRESH` 로 해소된 상태로 진행함.
   - 빌드 확인, 보드에 플래시 후 CAN 버스에서 데이터 수신 확인 (디버거로 VehicleData 값 확인 — LED_CAN은 에러 표시 전용이라 수신 시 점등하지 않음), 질문이 있으면 사용자에게 문의.
-  - ⚠️ **IWDG 리셋 주의**: IWDG가 부팅부터 활성(~4초)인데 리프레시 로직은 task 18.3(Phase 6)에나 추가됨 → 이 단계 실기 테스트 시 보드가 ~4초마다 리셋됨. 아래 '알려진 이슈'의 IWDG 항목 참조(임시 비활성 또는 임시 리프레시).
+  - **IWDG 리셋 주의**: IWDG가 부팅부터 활성(~4초)인데 리프레시 로직은 task 18.3(Phase 6)에나 추가됨 → 이 단계 실기 테스트 시 보드가 ~4초마다 리셋됨. 아래 '알려진 이슈'의 IWDG 항목 참조(임시 비활성 또는 임시 리프레시).
 
 ### Phase 2.5: CAN TX — "지상국 메시지가 LCD에 전달되는가?"
 
@@ -217,15 +217,15 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - `PacketBuilder_PackFloat2()` / `PacketBuilder_UnpackFloat2()`: memcpy 기반 float 2개 패킹/언패킹 (RTC/규정 전용으로만 유지)
     - **신규** `PacketBuilder_PackU16x4()`, `PackI16x4()`, `PackU32x2()`: 정수 패킹 (all-int 텔레메트리)
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.8, 5.9_
-  - [x]* 7.2 호스트 PC용 property test — 패킷 라운드트립 일관성 ✅ **실행 완료(2026-07)**
+  - [x]* 7.2 호스트 PC용 property test — 패킷 라운드트립 일관성 **실행 완료(2026-07)**
     - **Property 1: 라운드트립 일관성** — 임의의 LOG 필드 값으로 PacketBuilder_Create() 후 직렬화/역직렬화하면 원본과 동일
     - **Validates: Requirements 5.9**
     - `tests/host/test_main.c` — 네이티브 gcc(MinGW)로 실제 `packet_builder.c` 컴파일해 호스트에서 실행. `sizeof(LOG)==16` 확인 + PASS.
-  - [x]* 7.3 호스트 PC용 property test — 체크섬 무결성 ✅ **실행 완료(2026-07)**
+  - [x]* 7.3 호스트 PC용 property test — 체크섬 무결성 **실행 완료(2026-07)**
     - **Property 2: 체크섬 무결성** — 임의의 LOG 패킷에 대해 CalcChecksum 결과가 VerifyChecksum과 일치하며, 임의 1비트 변경 시 검증 실패
     - **Validates: Requirements 5.3**
     - 패킷 2000개 × 120비트 플립 = 240,000회 전수 검사, 전부 검출 확인. PASS.
-  - [x]* 7.4 호스트 PC용 property test — float 패킹 라운드트립 ✅ **실행 완료(2026-07)**
+  - [x]* 7.4 호스트 PC용 property test — float 패킹 라운드트립 **실행 완료(2026-07)**
     - **Property 3: float 패킹 라운드트립** — 임의의 float 2개를 PackFloat2 → UnpackFloat2하면 원본과 동일
     - **Validates: Requirements 5.4**
     - 5,000회 라운드트립 PASS. 추가로 `PackU16x4`/`PackI16x4`(INT16_MIN/MAX 경계값 포함)/`PackU32x2` 각 5,000회도 함께 검증.
@@ -235,11 +235,11 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - `COBS_Encode()`: 16바이트 입력 → 최대 17바이트 인코딩 (0x00 제거), 호출자가 0x00 delimiter 추가
     - `COBS_Decode()`: 인코딩된 데이터 → 원본 복원, 오류 시 0 반환
     - _Requirements: 7.2, 7.3_
-  - [x]* 8.2 호스트 PC용 property test — COBS 라운드트립 ✅ **실행 완료(2026-07)**
+  - [x]* 8.2 호스트 PC용 property test — COBS 라운드트립 **실행 완료(2026-07)**
     - **Property 4: COBS 라운드트립** — 임의의 16바이트 데이터를 Encode → Decode하면 원본과 동일
     - **Validates: Requirements 7.3**
     - 20,000회(길이 0~16 랜덤 포함) PASS. 손상 입력(인코딩 스트림에 0x00 포함) 거부도 확인.
-  - [x]* 8.3 호스트 PC용 property test — COBS 인코딩 결과에 0x00 없음 ✅ **실행 완료(2026-07)**
+  - [x]* 8.3 호스트 PC용 property test — COBS 인코딩 결과에 0x00 없음 **실행 완료(2026-07)**
     - **Property 5: 0x00 부재** — 임의의 16바이트 입력을 COBS_Encode한 결과에 0x00 바이트가 포함되지 않음
     - **Validates: Requirements 7.3**
     - 위 20,000회 인코딩 결과 전수 검사, 전부 PASS. 실행 방법: `tests/host/README.md`.
@@ -264,7 +264,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - `Timer_Scheduler_Start()`: HAL_TIM_Base_Start_IT(&htim5)
     - `Timer_Scheduler_Tick()`: HAL_TIM_PeriodElapsedCallback에서 TIM5 분기 시 호출
     - 100ms 주기(Prescaler=15999, ARR=999): VehicleData 읽기 → PacketBuilder_Create(INFO) → tx_queue_send(UART_Queue, TX_NO_WAIT) + tx_queue_send(SD_Queue, TX_NO_WAIT)
-    - **멀티레이트 스케줄링** (✅ 2025-06 확정, 2026-07-31 task 3.8로 DETAIL 발행 방식 개정): **PRIMARY 200ms**(phase 짝수)·**DETAIL 1s**(`Sched_EmitDetailStep(tick%10)`으로 10개 서브틱에 분산 — 그룹별 주기는 1s 유지). SD_ONLY 신호 → SD_Queue만. SSOT는 `can-signal-summary.md`(신호별 티어) / 설계 원칙은 `telemetry-signals.md` §2. 무선 여유: 최신 수치는 `can-signal-summary.md` §8 참조(작성 시점 ~96 pkt/s → 현재 125 pkt/s).
+    - **멀티레이트 스케줄링** (2025-06 확정, 2026-07-31 task 3.8로 DETAIL 발행 방식 개정): **PRIMARY 200ms**(phase 짝수)·**DETAIL 1s**(`Sched_EmitDetailStep(tick%10)`으로 10개 서브틱에 분산 — 그룹별 주기는 1s 유지). SD_ONLY 신호 → SD_Queue만. SSOT는 `can-signal-summary.md`(신호별 티어) / 설계 원칙은 `telemetry-signals.md` §2. 무선 여유: 최신 수치는 `can-signal-summary.md` §8 참조(작성 시점 ~96 pkt/s → 현재 125 pkt/s).
     - UART_Queue Full 시 ERR_UART_QUEUE_FULL WARNING LOG → SD_Queue에만 전송, LED_RFD900x(PE15) 점등
     - SD_Queue Full 시 ERR_SD_QUEUE_FULL WARNING LOG → UART_Queue에만 전송, LED_SD(PE13) 점등
     - 타임아웃 검사: 각 핵심 데이터 last_tick이 1000ms 초과 시 ERR_TIMEOUT WARNING LOG 생성 (한 번만 기록, 갱신 시 해제)
@@ -338,7 +338,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - [ ] 16.2 `FileX/App/app_filex.c` — FileX 미디어 초기화 후 SD_Logger_Init() 호출 (USER CODE 블록)
     - fx_app_thread_entry 내에서 fx_media_open 성공 후 SD_Logger_Init(&sdio_disk, &boot_time) 호출
     - 부팅 시 RTC_Manager_GetDateTime()으로 부팅 시각 획득
-    - ⚠️ **fx_media_open 실패 경로 데드락 수정 (시스템 점검 발견)**: 현재 생성코드는 `USER CODE BEGIN SD DRIVER get info error` 안이 `while(1);` — SD 미삽입/마운트 실패 시 **무한루프 → (IWDG 활성 시) 리셋 루프**, 요구사항 7("SD 실패해도 무선 텔레메트리는 계속")과 정면 충돌. `while(1)`을 ERR_SD_INIT LOG(→UART_Queue) + LED_SD(PE13) 점등 + SD 로깅 비활성 플래그로 교체하고 스레드는 종료/대기. USER CODE 블록 내부라 규칙 준수하며 수정 가능.
+    - **fx_media_open 실패 경로 데드락 수정 (시스템 점검 발견)**: 현재 생성코드는 `USER CODE BEGIN SD DRIVER get info error` 안이 `while(1);` — SD 미삽입/마운트 실패 시 **무한루프 → (IWDG 활성 시) 리셋 루프**, 요구사항 7("SD 실패해도 무선 텔레메트리는 계속")과 정면 충돌. `while(1)`을 ERR_SD_INIT LOG(→UART_Queue) + LED_SD(PE13) 점등 + SD 로깅 비활성 플래그로 교체하고 스레드는 종료/대기. USER CODE 블록 내부라 규칙 준수하며 수정 가능.
     - _Requirements: 1.2, 8.11, 11.2, 7 (SD 실패 시 무선 지속)_
 
 - [ ] 17. Checkpoint — Phase 5 SD 로깅 검증
@@ -389,9 +389,9 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
 
 - `*` 표시된 태스크는 선택 사항이며 빠른 MVP를 위해 건너뛸 수 있음
 - Property-based test는 순수 로직 모듈(packet_builder, cobs)에만 적용 — HAL/RTOS 의존 코드는 PBT 대상 제외
-- CAN ID: BMS·MPPT 확정 (`can-signal-summary.md` 참조). Motor는 🟠 잠정 (WaveSculptor22 기반 virtual, 0x400~0x4FF — VCU 확정 시 교체). LCD 보드 TX ID는 미정 (플레이스홀더 코드)
+- CAN ID: BMS·MPPT 확정 (`can-signal-summary.md` 참조). Motor는 잠정 (WaveSculptor22 기반 virtual, 0x400~0x4FF — VCU 확정 시 교체). LCD 보드 TX ID는 미정 (플레이스홀더 코드)
 - FDCAN1/MCP2518FD 역할: FDCAN1=차량 전체 RX(범위 필터 2개: 0x040~0x33F, 0x400~0x6FF — 2026-07-24 BMS(HV) 재배치 반영). MCP=향후 저우선순위 주변장치 버스로 예약(확정 용도=LCD 메시지 TX, 센서 RX는 미확정)
-- ✅ **types.h 재작업 완료** (task 1.4, 2026-06): `Core/Inc/types.h`는 확정 스펙(통합 `LOG_SOURCE` + 중첩 정수 `VehicleData_t`)으로 재작성됨. `can_receiver.c`(실 CAN ID·엔디안·스케일)·`ext_can_controller.c`(파싱 stub) 연쇄 수정 포함, 전체 빌드 통과.
+- **types.h 재작업 완료** (task 1.4, 2026-06): `Core/Inc/types.h`는 확정 스펙(통합 `LOG_SOURCE` + 중첩 정수 `VehicleData_t`)으로 재작성됨. `can_receiver.c`(실 CAN ID·엔디안·스케일)·`ext_can_controller.c`(파싱 stub) 연쇄 수정 포함, 전체 빌드 통과.
 - 모든 커스텀 코드는 `/* USER CODE BEGIN/END */` 블록 내부에만 작성
 - 각 태스크는 특정 요구사항을 참조하여 추적 가능
 - 각 Phase의 Checkpoint에서 실제 보드 동작을 확인한 후 다음 Phase로 진행
@@ -401,22 +401,22 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
 - **MCP 오실레이터**: SiT8008BI-12-33E-40.000000 (40MHz) 확정 → `OscFreq=40000000`, `SYSCLK_IS_CLKIN`.
 - **EXTI 엣지**: MCP INT는 active-low → `GPIO_MODE_IT_FALLING` + `GPIO_PULLUP`. 콜백은 `HAL_GPIO_EXTI_Falling_Callback`에서 CAN_INT(PB0)/CAN_RX_INT(PE9) 둘 다 처리.
 - **NVIC 우선순위** (PRIORITYGROUP_4, preemption): FDCAN1·TIM5=1, EXTI0/9·SPI1·USART2·SDMMC1=2, GPDMA1_Ch1/Ch2=3. SysTick=14, TIM6=15(기본값). → design.md "인터럽트 우선순위 설계" 참조.
-  - ⚠️ **GPDMA1_Channel1(USART2_RX)**: `.ioc` **손편집**으로 우선순위를 넣으면 `ForceEnableDMAVector` 때문에 재생성 시 0,0으로 리셋된다. 반드시 **CubeMX GUI(NVIC Configuration 탭)** 에서 Preemption=3으로 설정할 것 — GUI 설정은 재생성에도 유지됨(검증 완료, gpdma.c가 `3,0` 생성). Ch2는 손편집/GUI 모두 정상.
+  - **GPDMA1_Channel1(USART2_RX)**: `.ioc` **손편집**으로 우선순위를 넣으면 `ForceEnableDMAVector` 때문에 재생성 시 0,0으로 리셋된다. 반드시 **CubeMX GUI(NVIC Configuration 탭)** 에서 Preemption=3으로 설정할 것 — GUI 설정은 재생성에도 유지됨(검증 완료, gpdma.c가 `3,0` 생성). Ch2는 손편집/GUI 모두 정상.
 - **LED_CAN(PB15)**: CAN 문제 진행 중=점등, 정상=소등의 실시간 양방향 표시(2026-08 LED 재설계로 갱신 — 아래 항목 참고). 요구사항 3.4/12.3 반영. (2026-08: PE14→PB15로 정정 — 아래 "회로도 대조" 항목 참고)
-- **RTC 프리스케일러** (✅ 시스템 점검 수정, 2026-06): RTC 클럭=LSI(32000Hz)인데 프리스케일러가 LSE(32768Hz)용 CubeMX 기본값 127/255여서 캘린더가 0.9766Hz(하루 ~34분 지연, 계통오차)였음. → **`SynchPrediv=249`**(32000÷128÷250=1.000Hz)로 수정. `rtc.c`(즉시 반영) + `.ioc`(`RTC.AsynchPrediv=127`/`SynchPrediv=249` 추가 — 기존엔 항목 없어 재생성 시 기본값 복귀했음) 양쪽 수정. RTC는 `MX_RTC_Init`/`.ioc`에서만 설정 가능(USER CODE 대안 없음). LSI RC 고유 드리프트(±수%)는 잔존 — 절대 정밀 필요 시 LSE 크리스탈 또는 스무스 캘리브레이션.
-- **LOG_SOURCE** (✅ task 1.4 적용 완료, 2026-06): *이전* `types.h`는 기존 6종 enum `SYS=0, CAN_SRC=1, SPI_SRC=2, UART_SRC=3, SD_SRC=4, ADC_SRC=5`이었음. **2025-06 확정 → 2026-06 적용**: 데이터 소스(`SRC_SYS, SRC_BMS_BOT, SRC_BMS_TOP, SRC_MPPT1~3, SRC_MOTOR, SRC_RESERVED1/2`) + 에러 소스(`SRC_CAN_ERR, SRC_SPI_ERR, SRC_UART_ERR, SRC_SD_ERR`) 통합 단일 enum으로 변경 완료 (빌드 통과).
+- **RTC 프리스케일러** (시스템 점검 수정, 2026-06): RTC 클럭=LSI(32000Hz)인데 프리스케일러가 LSE(32768Hz)용 CubeMX 기본값 127/255여서 캘린더가 0.9766Hz(하루 ~34분 지연, 계통오차)였음. → **`SynchPrediv=249`**(32000÷128÷250=1.000Hz)로 수정. `rtc.c`(즉시 반영) + `.ioc`(`RTC.AsynchPrediv=127`/`SynchPrediv=249` 추가 — 기존엔 항목 없어 재생성 시 기본값 복귀했음) 양쪽 수정. RTC는 `MX_RTC_Init`/`.ioc`에서만 설정 가능(USER CODE 대안 없음). LSI RC 고유 드리프트(±수%)는 잔존 — 절대 정밀 필요 시 LSE 크리스탈 또는 스무스 캘리브레이션.
+- **LOG_SOURCE** (task 1.4 적용 완료, 2026-06): *이전* `types.h`는 기존 6종 enum `SYS=0, CAN_SRC=1, SPI_SRC=2, UART_SRC=3, SD_SRC=4, ADC_SRC=5`이었음. **2025-06 확정 → 2026-06 적용**: 데이터 소스(`SRC_SYS, SRC_BMS_BOT, SRC_BMS_TOP, SRC_MPPT1~3, SRC_MOTOR, SRC_RESERVED1/2`) + 에러 소스(`SRC_CAN_ERR, SRC_SPI_ERR, SRC_UART_ERR, SRC_SD_ERR`) 통합 단일 enum으로 변경 완료 (빌드 통과).
 - **MCP_SPITransfer**: 수신 전용 경로에서 `mcp_spi_buf`(16B) 크기 단위로 분할 전송하여 송신 버퍼 초과읽기 방지.
 - **MCP 수신 deferred 구조** (Issue #1 해결): EXTI ISR은 `ExtCAN_NotifyInterrupt()`로 `mcp_rx_semaphore`만 set. `MCP_RX_Thread`(Priority 6, Stack 1024B, app_threadx.c에서 생성)가 세마포어 대기 → `ExtCAN_DrainRxFIFO()`로 FIFO를 빌 때까지 드레인. 블로킹 SPI가 스레드 컨텍스트라 `HAL_GetTick()` timeout이 정상 동작한다.
 - **VehicleData 임계구역**: FDCAN ISR(pri 1)은 선점되지 않아 보호 불필요(`__disable_irq` 제거). MCP_RX_Thread(pri 6)는 FDCAN ISR에 선점되므로 갱신 구간을 `TX_DISABLE/TX_RESTORE`(PRIMASK 저장/복원)로 보호.
 - **MCP_RX_Thread 폴백 폴링** (리뷰 #3 해결): `tx_semaphore_get`을 `TX_WAIT_FOREVER` 대신 유한 타임아웃(`MCP_RX_POLL_TICKS` ≈100ms)으로 대기하고, 타임아웃(`TX_NO_INSTANCE`) 시에도 드레인한다. 드레인 중 SPI 일시오류로 빠져나와 INT(active-low)가 물린 채 새 falling 엣지가 없는 'stuck' 상황 및 부팅/경쟁으로 놓친 통지를 주기적으로 복구한다.
 - **SPI 에러 LOG 레이트리밋** (리뷰 #5 해결): `ExtCAN_ReportSPIError`는 드라이버 콜백(SPI 전송 1건)마다 호출되므로, 동일 LOG를 `MCP_SPI_ERR_LOG_MIN_INTERVAL_MS`(500ms) 간격으로 제한해 폭주를 막는다. LED/SYSTEM_STATE는 매번 갱신(멱등), retry count는 계속 누적되어 다음 보고에 반영.
-- **SPI1 단일소유/뮤텍스** (리뷰 #1, ✅ **task 6A.2 구현 완료, `PHASE25_CAN_TX` 게이트**): `ExtCAN_Transmit()`이 SPI1을 `MCP_RX_Thread`(pri 6, RX)와 공유하므로, 상위 드라이버 호출 단위를 `TX_MUTEX`(`mcp_spi_mutex`, `TX_INHERIT` 우선순위 상속)로 직렬화. TX FIFO full 폴링(최대 20ms) 포함. → design.md "SPI1 동시성" 참조.
-- **FileX fault-tolerant 활성화** (✅ 시스템 점검 발견·수정, 2026-07): `fx_user.h`의 `FX_ENABLE_FAULT_TOLERANT`가 켜져 있었으나 `fx_fault_tolerant_enable()`을 아무도 호출하지 않아 실제 보호는 0이었음(플래시만 차지). `FileX/App/app_filex.c`(`PHASE5_SD_LOGGING` 게이트) media_open 성공 직후 4096B 정적 버퍼로 활성화 — 주행 중 전원 컷 시 FAT/디렉터리 손상 방지.
-- **VehicleData 무임계구역 불변식의 부팅 시 검증** (✅ 시스템 점검 발견·수정, 2026-07): FDCAN1/TIM5 ISR 무잠금 설계는 "두 IRQ의 preemption priority가 같다"는 CubeMX 설정에만 의존 — 재생성/실수로 어긋나도 컴파일은 통과해 조용히 데이터 경합 발생 가능. `main.c` USER CODE 2에서 `HAL_NVIC_GetPriority()`로 FDCAN1_IT0/IT1과 TIM5 우선순위를 부팅 시 직접 비교, 불일치 시 LED_ERR 점등 + `Error_Handler()`로 즉시 정지(게이트 무관, 항상 실행).
+- **SPI1 단일소유/뮤텍스** (리뷰 #1, **task 6A.2 구현 완료, `PHASE25_CAN_TX` 게이트**): `ExtCAN_Transmit()`이 SPI1을 `MCP_RX_Thread`(pri 6, RX)와 공유하므로, 상위 드라이버 호출 단위를 `TX_MUTEX`(`mcp_spi_mutex`, `TX_INHERIT` 우선순위 상속)로 직렬화. TX FIFO full 폴링(최대 20ms) 포함. → design.md "SPI1 동시성" 참조.
+- **FileX fault-tolerant 활성화** (시스템 점검 발견·수정, 2026-07): `fx_user.h`의 `FX_ENABLE_FAULT_TOLERANT`가 켜져 있었으나 `fx_fault_tolerant_enable()`을 아무도 호출하지 않아 실제 보호는 0이었음(플래시만 차지). `FileX/App/app_filex.c`(`PHASE5_SD_LOGGING` 게이트) media_open 성공 직후 4096B 정적 버퍼로 활성화 — 주행 중 전원 컷 시 FAT/디렉터리 손상 방지.
+- **VehicleData 무임계구역 불변식의 부팅 시 검증** (시스템 점검 발견·수정, 2026-07): FDCAN1/TIM5 ISR 무잠금 설계는 "두 IRQ의 preemption priority가 같다"는 CubeMX 설정에만 의존 — 재생성/실수로 어긋나도 컴파일은 통과해 조용히 데이터 경합 발생 가능. `main.c` USER CODE 2에서 `HAL_NVIC_GetPriority()`로 FDCAN1_IT0/IT1과 TIM5 우선순위를 부팅 시 직접 비교, 불일치 시 LED_ERR 점등 + `Error_Handler()`로 즉시 정지(게이트 무관, 항상 실행).
 - **회로도(`WSC.kicad_sch`) 대조 — 핀 배정 오류 3건 발견·수정 (2026-08)**: PCB 회로도를 `kicad-cli sch export netlist`로 넷리스트 추출해 STM32 핀 배정 전수 대조한 결과, 발견 즉시 수정.
   - **LED_SD/LED_CAN 핀 완전 오배정** — 코드는 LED_SD를 PE13, LED_CAN을 PE14로 구동했으나, 회로도상 두 LED(각각 R36/R35 저항 경유 정식 회로)는 **PD8/PB15**에 배선되어 있고 PE13/PE14는 **미접속**이었음. 실기판에서는 SD/CAN 에러 LED가 절대 켜지지 않는 상태였음. `main.h`(`LED_SD_Pin/GPIO_Port`, `LED_CAN_Pin/GPIO_Port`), `gpio.c`(두 핀을 기존 GPIOE 일괄 초기화에서 분리해 PD8/PB15 개별 `HAL_GPIO_Init`), `.ioc`(`Mcu.Pin13/14`, `PD8.*`/`PB15.*` 항목) 전부 정정. 코드상 다른 로직(LED 점등 조건 등)은 변경 없음 — 핀 번호만 수정.
   - **`Power_check`(PB1) 핀 미접속 확인** — 회로도상 PB1은 미접속 상태. 이 핀을 읽어 "전원 정상 LED" 로직을 만들려던 계획(requirements.md 구 Req 12.2)은 **폐기**하고, **패시브 하드웨어 LED(3.3V 직결, GPIO/펌웨어 무관)**로 단순화하기로 결정. `LED_BOARD_CHECK`(PE12)는 이후 별도로 실시간 반영 방식으로 재설계됨(아래 "LED 역할 구체화" 항목 참고) — 이걸로 Req 1.3과 Req 12.2가 서로 다른 의미를 주장하던 모순도 함께 해소됨.
-    - ⚠️ **PHASE6_SAFETY(task 18.2, 전원 강하 감지)는 여전히 PB1을 GPIO_Input으로 읽어 사용** — 사용자 결정(2026-08): **PB1을 3.3V 레일에 직결 배선 예정**(현재 `PHASE6_SAFETY=0`이라 비활성 상태라 당장 영향 없음, 배선 완료 시 코드 수정 없이 그대로 동작).
+    - **PHASE6_SAFETY(task 18.2, 전원 강하 감지)는 여전히 PB1을 GPIO_Input으로 읽어 사용** — 사용자 결정(2026-08): **PB1을 3.3V 레일에 직결 배선 예정**(현재 `PHASE6_SAFETY=0`이라 비활성 상태라 당장 영향 없음, 배선 완료 시 코드 수정 없이 그대로 동작).
       **트레이드오프 인지 필요**: PB1이 감지하는 3.3V가 MCU 자신을 구동하는 레일과 동일하면, 외부 전원 차단 시 PB1과 MCU 코어가 거의 동시에 죽는다. task 18.2의 설계 의도("완전히 죽기 전에 감지해 SD 긴급 flush를 마칠 시간 확보")가 주는 조기경보 여유는 결국 **해당 3.3V 레일의 벌크 캐패시턴스가 무너지는 속도**에 좌우된다 — 캐패시터가 충분히 크면 수 ms 여유가 생기고, 작으면 사실상 조기경보 없이 함께 다운된다. 회로 설계 영역이라 여기서는 트레이드오프만 기록.
   - **GPS UART(USART1, PB6/PB7) 신설 배선 발견 — 활성화 완료**: 회로도에 커넥터(J11)로 배선된 `/GPS_TX`(PB6)·`/GPS_RX`(PB7) net을 확인, GPS 센서 연동용으로 신설된 배선임을 확인. `USART1`을 CubeMX 패턴에 맞춰 활성화(`usart.c`/`usart.h`/`main.c`/`.ioc`) — **보레이트 등 세부 설정은 GPS 센서 기종 선정 후 확정 예정**(현재 임시값으로 컴파일만 통과하는 상태, 실사용 전 재설정 필수). 파싱 로직은 아직 없음.
   - **PB3/PB4/PB5 — 라벨 없는 예비 GPIO 확인**: 회로도상 R43/R28/R29에 각각 연결되어 있으나 용도 미정. 사용자 확인: 예비로 남겨둔 핀이며 필요 시 추후 활성화 예정 — 현재 조치 없음.
@@ -442,7 +442,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   3. **큐 Full로 드롭된 패킷의 sticky 비트까지 클리어** (`timer_scheduler.c`) — `Sched_Send`가 `TX_QUEUE_FULL`을 삼키는데 클리어는 무조건 수행돼, 큐가 찬 틱에서는 **5초치 고장 비트 합집합이 그대로 소실**됐다(sticky 도입 목적 자체가 무효화). → `Sched_Send`/`Sched_EmitBoth`가 **"요청한 큐에 전부 들어갔는지"를 반환**하도록 하고, **성공했을 때만** 누적을 리셋. 실패 시 누적을 유지해 다음 주기에 재시도(중복 보고는 "최근 N초 내 발생" 의미상 무해).
   - 2차 리뷰가 **정상 확인**해준 것: CRC-8 테이블 참조 구현 일치(신규 호스트 테스트가 고정) / 큐 사이징 일관성 / BMS 0x040~0x07F 블록 산술·MPPT 4유닛 디스패치·LV CMU 인덱싱·필터 0x34F 확장 모두 경계 문제 없음 / PD6·PD8·PB15 GPIO 클럭 활성 및 `MX_USART1_UART_Init`이 `MX_GPIO_Init` 뒤에 위치 / PB6·PB7 충돌 없음 / 스케줄러 위상 실제 무충돌 및 스텝별 패킷 수가 주석과 일치 / `build.ps1 -Release`가 makefile 규약과 일치 / Motor 0x40B·0x40E 바이트 오더가 SSOT와 일치.
 - **코드 리뷰 후속 수정 5건 (2026-08)**: 위 LED 재설계·주기 감속 직후 전체 점검에서 발견. 1~3번은 LED 재설계가 넣은 회귀, 4번은 감속의 부작용, 5번은 기존 오해.
-  1. **LED_CAN 회복이 오류 표시를 즉시 지움** (`can_receiver.c`) — 회복 로직을 RX 드레인 루프 **안**에 넣었더니, ⚠ **RX FIFO 오버플로우·프로토콜 오류는 정확히 "프레임이 계속 쏟아지는" 상황에서 발생**하므로 오류로 켠 LED를 같은 루프의 다음 프레임이 마이크로초 안에 꺼버렸다(`SystemState.error`는 1인데 LED만 정상인 모순). → 회복 판정을 **루프 밖으로 이동(콜백당 1회)** 하고 `CAN_ERR_RECOVERY_HOLD_MS`(3초) 홀드오프 도입: 마지막 오류 후 3초간 무오류 수신이 지속돼야 소등. 모든 오류 지점(FIFO Full/메시지 유실/프로토콜/Bus-Off)에서 `CAN_MarkError()`로 기준 시각 갱신.
+  1. **LED_CAN 회복이 오류 표시를 즉시 지움** (`can_receiver.c`) — 회복 로직을 RX 드레인 루프 **안**에 넣었더니, **RX FIFO 오버플로우·프로토콜 오류는 정확히 "프레임이 계속 쏟아지는" 상황에서 발생**하므로 오류로 켠 LED를 같은 루프의 다음 프레임이 마이크로초 안에 꺼버렸다(`SystemState.error`는 1인데 LED만 정상인 모순). → 회복 판정을 **루프 밖으로 이동(콜백당 1회)** 하고 `CAN_ERR_RECOVERY_HOLD_MS`(3초) 홀드오프 도입: 마지막 오류 후 3초간 무오류 수신이 지속돼야 소등. 모든 오류 지점(FIFO Full/메시지 유실/프로토콜/Bus-Off)에서 `CAN_MarkError()`로 기준 시각 갱신.
      - 같이 정정: **메시지 유실**이 FIFO Full과 같은 `ERR_CAN_RX_OVERFLOW`인데도 LED를 안 켜던 불일치 해소(유실은 "곧 넘칠 것"이 아니라 "실제로 잃었다"라 더 심각).
   2. **`mcp_ok`가 초기화 실패를 가림** (`ext_can_controller.c`) — `MCP_SPITransfer` 회복 경로가 **`ExtCAN_Init()` 내부의 첫 SPI 전송에서 이미 발동**해, 이후 ConfigureFIFO/Filter/StartCAN20이 실패해도 `mcp_ok`가 1로 남아 MCP2518FD가 죽은 채 LED_BOARD_CHECK가 "정상"을 표시했다. → 회복 경로에 **`mcp_initialized` 가드** 추가. 초기화 성공 시의 `mcp_ok=1`은 `ExtCAN_Init()` 말미가 전담(+ `SystemState_RefreshBoardLed()` 호출 추가).
   3. **`SystemState_RefreshBoardLed()` 경합** (`main.c`) — ISR·스레드 양쪽에서 호출되는데 "플래그 읽기 → GPIO 쓰기"가 비원자적이라, 스레드가 낡은 값으로 ISR의 최신 결과를 덮어쓸 수 있었다. 호출부가 전부 `if (!flag)` 가드라 **재보정도 영영 일어나지 않아** LED가 잘못된 상태로 고착. → 계산+기록을 **PRIMASK 저장/복원 임계구역**으로 보호(ISR·스레드 양쪽 안전, 상태 전이 시점에만 호출되므로 차단 구간 무해).
@@ -456,7 +456,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - **결정적 근거**: 누적 에너지(Odometer, DC_Bus_AmpHours, 쿨롱카운터, 규정 누적값)는 **기기가 자체 적분해 보내므로 샘플링 주기와 무관하게 정확**하다. 우리가 전류를 적분하지 않으므로 순간값 샘플링을 늦춰도 에너지 전략 정확도가 안 깎인다.
   - **실익은 대역폭 절감보다 링크 마진**: 170 pkt/s는 64kbps·듀티 50% **이론값**이고 아웃백 장거리·이동 중에는 재전송·페이딩으로 실효 처리량이 크게 떨어진다. 78% → **16%**(133 → 27 pkt/s)로 낮춰 통신 거리·유실 내성 확보. SD 기록량도 2.9 → 0.6 KB/s(8시간 84MB → 17MB).
   - **위상 분리로 피크 30 → 18**: 주기가 느려지면서 각 작업을 **서로 다른 mod 10 잔여류**에 배치할 여유가 생겼다 — PRIMARY `tick%10==0`, DETAIL 그룹 `tick%5==2`(≡2·7 mod 10), 타임아웃 `tick%10==5`, 규정 `tick%100==4`, IWDG `tick%20==13`(≡3). **어떤 틱도 두 작업을 동시에 수행하지 않으므로** 피크 = 가장 큰 단일 작업 = PRIMARY 18패킷. UART 깊이 40 대비 여유 1.33× → **2.2×**. 이제 MPPT를 더 늘려도 DETAIL(step 6)이 아니라 PRIMARY가 유닛당 +1로 자란다.
-  - ⚠ **타임아웃 검사를 DETAIL 스텝에서 분리**(`Sched_CheckTimeouts()`를 step 5에서 떼어내 자체 `tick%10==5` 분주로). 안 그러면 DETAIL이 5초 주기가 되면서 CAN 두절 검출 지연이 최대 6초(임계값 1s + DETAIL 1주기 5s)로 늘어난다. 분리로 종전(최대 ~2초) 유지.
+  - **타임아웃 검사를 DETAIL 스텝에서 분리**(`Sched_CheckTimeouts()`를 step 5에서 떼어내 자체 `tick%10==5` 분주로). 안 그러면 DETAIL이 5초 주기가 되면서 CAN 두절 검출 지연이 최대 6초(임계값 1s + DETAIL 1주기 5s)로 늘어난다. 분리로 종전(최대 ~2초) 유지.
   - 주기·위상을 전부 `SCHED_*_TICKS` / `SCHED_PHASE_*` 상수로 추출 — **Phase 4 보드 검증 중에는 일시적으로 줄여 관측을 촘촘히 할 수 있다**(예: `SCHED_PRIMARY_TICKS 2` = 200ms). 검증 후 원복 필요.
   - 검증: awk 시뮬레이션(1000틱=100초)으로 **작업 겹침 0회**, UART/SD 최대 유입 18, PRIMARY 1.0s·DETAIL 그룹 5.0s·타임아웃 1.0s·규정 10.0s 주기, DETAIL 합계 EmitBoth 43/EmitSdOnly 50 보존 확인. 빌드는 PHASE 게이트 전부 0 / 전부 1 양쪽 경고 0.
   - 검토했으나 **채택하지 않은 안**: "무선만 감속하고 SD는 기존 해상도 유지"(옵션 B). 포렌식 근거로 들었던 CUV/COV 스냅샷·Safety/PF·CB_Status는 **BMS가 이벤트 시점에 캡처해둔 상태 레지스터**라 5초에 회수해도 내용이 동일해, 코드 복잡도를 늘릴 만한 실익이 없다고 판단.
@@ -468,16 +468,16 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - 지상국(ArrowPoint-Telemetry): `LogSource.SRC_RESERVED3`, 디코더 `applyBmsLv` 제거, `VehicleSnapshot.BmsLvUnit` 제거, 시뮬레이터 LV emit 제거, `bms-lv.html`·라우팅·메뉴·`renderBmsLv` 제거, 메인 대시보드 LV 타일 제거.
   - 빌드: 게이트 전부 0 / 전부 1 양쪽 경고 0. 지상국 `mvn compile` 통과.
 - **MPPT 3대 → 4대 증설 (2026-08)**: MPPT #4를 로터리 스위치 4(base **0x340**, 0x340~0x346)로 추가. **기존 #1~#3의 CAN ID(0x310/0x320/0x330)와 BMS·Motor·BMS_LV의 모든 CAN ID는 변경 없음.**
-  - **FDCAN1 필터0 상한 `0x33F → 0x34F` 확장** (`can_receiver.c` `CAN_FILTER0_ID2`) — ⚠ 이걸 빠뜨리면 MPPT4 프레임이 하드웨어 필터에서 전량 거부되어 SW까지 도달조차 못 한다. 필터는 수신 보드 내부 설정이라 타 보드 영향 없음.
+  - **FDCAN1 필터0 상한 `0x33F → 0x34F` 확장** (`can_receiver.c` `CAN_FILTER0_ID2`) — 이걸 빠뜨리면 MPPT4 프레임이 하드웨어 필터에서 전량 거부되어 SW까지 도달조차 못 한다. 필터는 수신 보드 내부 설정이라 타 보드 영향 없음.
   - **`LOG_SOURCE`에 `SRC_MPPT4`를 `SRC_MPPT3` 바로 뒤(=6)에 삽입** → 사용자 결정(2026-08, MPPT를 연속 배치). 그 결과 **이후 소스 값이 전부 +1 시프트**: `SRC_MOTOR 6→7`, `SRC_BMS_LV 7→8`, `SRC_RESERVED1/2 8·9→9·10`, `SRC_CAN_ERR 10→11`, `SRC_SPI_ERR 11→12`, `SRC_UART_ERR 12→13`, `SRC_SD_ERR 13→14`. (`SRC_SYS`~`SRC_MPPT3` 0~5는 불변)
-    - 🚨 **이 enum 값 = LOG 패킷 `source` 바이트(전송 포맷)** → **지상국 디코더의 source 매핑 테이블을 반드시 함께 갱신해야 한다.** 갱신하지 않으면 Motor·BMS_LV·모든 에러 패킷을 조용히 오독한다(빌드는 통과하므로 드러나지 않음).
+    - **이 enum 값 = LOG 패킷 `source` 바이트(전송 포맷)** → **지상국 디코더의 source 매핑 테이블을 반드시 함께 갱신해야 한다.** 갱신하지 않으면 Motor·BMS_LV·모든 에러 패킷을 조용히 오독한다(빌드는 통과하므로 드러나지 않음).
     - 대안이었던 "빈 `SRC_RESERVED1`(=8) 슬롯 재사용"(기존 값 전부 보존, 단 MPPT가 3·4·5·8로 비연속)은 채택하지 않음.
   - `types.h`에 **`MPPT_UNIT_COUNT`(=4)** 신설 — `MpptData_t mppt[MPPT_UNIT_COUNT]`와 `timer_scheduler.c`의 MPPT 루프 3곳이 이 상수를 참조하므로, 다음 증설 시 상수 + CAN base define + 디스패치 분기만 손대면 된다.
   - 타임아웃 감시 대상 `SCHED_TIMEOUT_SOURCES` 8→9 (MPPT4 워치독 추가).
   - **예산 재계산**: PRIMARY 17→18, DETAIL 40→43, SD_ONLY 49→50. 무선 125→**133 pkt/s(74%→78%)**, ISR 피크 26→**30** vs UART 깊이 40(여유 1.54×→**1.33×**). 피크 스텝은 **step 6(MPPT DETAIL)** 로 고정 — MPPT를 더 늘리면 이 스텝이 먼저 한계에 닿아 **7대(42 > 40)부터 초과**하므로, 그 전에 MPPT DETAIL을 두 스텝으로 분할해야 한다.
   - 패킷 번호 재부여: MPPT4가 PRIMARY **#10**으로 들어가며 Motor #10~#13→**#11~#14**, BMS_LV #14~#15→**#15~#16**, BMS SOC #16~#17→**#17~#18**.
   - 빌드 검증: PHASE 게이트 전부 0 / 전부 1 양쪽에서 `Core/Src`·`Core/Inc` 경고 0 확인 후 게이트 원복.
-  - ❌ **미확인 잔여**: 실제 MPPT #4 유닛의 **로터리 스위치를 4로 설정했는지 현장 확인 필요** (0이면 base=general_id 0x300이라 다른 대역과 충돌 가능). `can-signal-summary.md` §9 체크리스트에 등록됨.
+  - **미확인 잔여**: 실제 MPPT #4 유닛의 **로터리 스위치를 4로 설정했는지 현장 확인 필요** (0이면 base=general_id 0x300이라 다른 대역과 충돌 가능). `can-signal-summary.md` §9 체크리스트에 등록됨.
 - **LED 역할 구체화 — 실시간 상태 표시로 재설계 (2026-08)**: 기존 LED는 "오류 시 점등"만 하고 자동 회복 경로가 없어(일부는 리셋 전까지 영구 래치, 일부는 매 이벤트 토글) 육안으로 "지금 문제가 있는지"를 바로 판별할 수 없었다. `SystemState_RefreshBoardLed()`(`main.h`/`main.c`)를 신설해 아래처럼 재설계:
   - **LED_BOARD_CHECK(PE12)**: "상시 점등"에서 "현재 활성화된 서브시스템 전부 정상이면 점등, 하나라도 비정상이면 소등"으로 변경. can_ok/mcp_ok는 항상, uart_ok/sd_ok는 각각 `PHASE4_UART_PIPELINE`/`PHASE5_SD_LOGGING` 게이트가 켜져 있을 때만 평가(꺼진 파이프라인 때문에 오판하지 않도록). can_ok/mcp_ok/uart_ok/sd_ok가 바뀌는 모든 지점(`can_receiver.c`, `sd_logger.c`, `uart_transmitter.c`, `ext_can_controller.c`, `timer_scheduler.c`)에서 재호출.
   - **LED_SD(PD8)/LED_CAN(PB15)**: 오류 시 점등은 유지하되, 다음 정상 이벤트(SD 기록 성공/CAN 메시지 수신 성공)에서 자동 소등하도록 회복 경로 추가. 큐 Full 경고(`ERR_UART_QUEUE_FULL`/`ERR_SD_QUEUE_FULL`, `timer_scheduler.c`)도 각각 `uart_ok`/`sd_ok`를 0으로 내려 동일한 회복 경로를 타게 함(그렇지 않으면 큐 Full 시의 점등이 다음 성공 이벤트에서도 지워지지 않고 영구 래치로 남는 문제가 있었음).
@@ -500,7 +500,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
 - [ ] **GPS UART(USART1) 실사용 설정 — GPS 센서 기종 선정 대기** (2026-08 회로도 대조로 발견·활성화): 하드웨어(PB6/PB7, J11 커넥터)는 배선되어 있고 `MX_USART1_UART_Init()`도 활성화했으나, 보레이트·프로토콜(NMEA vs UBX 등)·파싱 로직은 전부 미정. GPS 센서 기종이 정해지면 `usart.c`의 `huart1.Init.BaudRate` 등 재설정 + 수신 파이프라인(파서) 신규 구현 필요.
 - [ ] **`MX_USART1_UART_Init` 실패가 전 시스템을 정지시킴** (2026-08 3차 리뷰 지적, 판단 보류): GPS UART는 아직 보레이트도 임시값이고 수신·파싱 로직도 없는 **미사용 주변장치**인데, 초기화 실패 시 `Error_Handler()` 무한루프로 CAN 수신·무선 송신·SD 로깅이 전부 멈춘다. 부가 기능이 본체를 막는 구조는 옳지 않으나, 해당 코드는 **CubeMX 생성 규약**이라 지금 고치면 `.ioc` 재생성 시 되돌아간다. → GPS 센서 확정 후 초기화를 USER CODE 블록으로 옮길 때 "실패해도 로그만 남기고 계속"으로 함께 정리할 것.
 - [x] **Power_check 핀 PB1 → PD6 재배정 완료** (2026-08): 회로도가 갱신되어 **PD6(pin 87)이 `3.3V` 넷에 직결**되고 **PB1(pin 33)은 미접속**으로 바뀐 것을 넷리스트(`kicad-cli sch export netlist`)로 실측 확인 → `main.h`(`Power_check_Pin/GPIO_Port`), `.ioc`(`Mcu.Pin9`, `PD6.*` 항목), 관련 주석·문서 전부 갱신. `gpio.c`는 매크로를 참조하므로 자동 반영되며 GPIOD 클럭은 이미 활성(LED_SD PD8·SD_DETECT PD0 때문). 극성 가정(정상=HIGH)은 그대로 유효.
-  - ⚠ **잔존 트레이드오프**: 감지 레일이 MCU 자신의 구동 레일과 같으므로, 전원 차단 시 조기경보 여유는 그 레일의 벌크 캐패시턴스 방전 속도에 좌우됨 — 여유가 거의 없을 수 있다는 점은 배선이 바뀌어도 그대로다(위 "확정된 설계 결정" 참조).
+  - **잔존 트레이드오프**: 감지 레일이 MCU 자신의 구동 레일과 같으므로, 전원 차단 시 조기경보 여유는 그 레일의 벌크 캐패시턴스 방전 속도에 좌우됨 — 여유가 거의 없을 수 있다는 점은 배선이 바뀌어도 그대로다(위 "확정된 설계 결정" 참조).
 - [ ] **PB3/PB4/PB5 예비 GPIO** (2026-08 회로도 대조로 발견): R43/R28/R29에 연결된 라벨 없는 net. 용도 미정, 필요 시 추후 활성화 예정(현재 조치 없음).
 
 - [ ] **패킷 디스크립터 테이블 리팩터** (2026-07-31 전체 시스템 리뷰 제안, 예상 1~2일 — **Phase 4 보드 검증 후 / 다음 CAN 스펙 개정 전**에 착수 권장)
@@ -525,7 +525,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - `build.ps1`이 `DEBUG=1`을 하드코딩해 **항상 `-Og`(디버깅용 최적화 억제)로만 빌드**되고 있었다. 그대로 대회에 나가면 디버그 최적화 코드로 주행하게 된다.
   - `-Og`는 ISR 체류 시간을 늘리는데, FDCAN1과 TIM5가 같은 NVIC 우선순위라 서로 선점하지 못하고 STM32U5의 CAN RX FIFO0는 3칸 고정이므로 **ISR 시간이 곧 수신 유실 마진**이다. 즉 최적화 레벨이 기능 안정성에 직결된다.
   - `build.ps1 -Release`(= `make DEBUG=0 OPTIMIZATION=-O2`, 산출물 `build/release/`) 추가. 실측 결과 **ROM이 오히려 감소**(67,312B → 64,336B), 프로젝트 코드 경고 0. `-Flash`도 빌드 종류에 맞는 elf를 굽도록 연동.
-  - ⚠ 실기 배포 전 **`-Release` 빌드로 Phase 체크포인트를 재검증**할 것. 최적화 레벨이 바뀌면 타이밍이 달라져 `volatile` 누락 같은 잠복 결함이 드러날 수 있다(현재 공유 변수 `alive_flags`/`g_power_down`/`rx_head`/`rx_tail`/`uart_tx_dma_error`는 전부 `volatile` 확인함. `VehicleData`는 비-volatile이지만 FDCAN·TIM5 ISR이 상호 선점 불가라 ISR 1회 실행 중 값이 바뀔 수 없어 안전).
+  - 실기 배포 전 **`-Release` 빌드로 Phase 체크포인트를 재검증**할 것. 최적화 레벨이 바뀌면 타이밍이 달라져 `volatile` 누락 같은 잠복 결함이 드러날 수 있다(현재 공유 변수 `alive_flags`/`g_power_down`/`rx_head`/`rx_tail`/`uart_tx_dma_error`는 전부 `volatile` 확인함. `VehicleData`는 비-volatile이지만 FDCAN·TIM5 ISR이 상호 선점 불가라 ISR 1회 실행 중 값이 바뀔 수 없어 안전).
 
 - [x] **MCP2518FD 수신 필터가 모든 ID를 통과시킴** — **2026-08-24 해결** (Bus B ID 맵 확정으로 0x510~0x51F만 통과하도록 축소, 아래 해당 항목 참조). 아래는 발견 당시 기록:
   - `ext_can_controller.c` `ExtCAN_Init()`의 `mcp_filter0.AcceptanceID = 0x000` / `AcceptanceMask = 0x000`. 마스크 0은 "전 비트 don't care" = **표준 ID 전부 수락**이다(주석의 `[미정]` 그대로 남은 상태).
@@ -560,10 +560,10 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
     - `rtc.c`: `RTCClockSelection = RCC_RTCCLKSOURCE_LSE`, `SynchPrediv 249 → 255`(32768Hz 기준 1Hz).
     - `.ioc`: `RCC.PLLM=1`, `RCC.EPOD_VALUE=16000000`, `RCC.PLLSourceVirtual=RCC_PLLSOURCE_HSE`, `RCC.RTCClockSelection=RCC_RTCCLKSOURCE_LSE`, `RTC.SynchPrediv=255` + `RCC.IPParameters`에 두 항목 추가.
   - **하위 클럭 불변 확인**: MSI 48MHz/PLLM 3 = 16MHz, HSE 16MHz/PLLM 1 = 16MHz로 **PLL 입력이 동일**하다. 따라서 VCO 160 / PLLP·Q 80 / PLLR 160, SDMMC 80, FDCAN 80, SYSCLK 160 전부 그대로다. MSIK를 쓰는 주변장치는 없다(SDMMC=PLL1, SPI1=SYSCLK, USART1/2=PCLK). `Core/Src/tx_initialize_low_level.S`의 `SYSTEM_CLOCK = 160000000`도 유효(SysTick 리로드 159999 = 1ms, 디스어셈블리 리터럴 0x270FF로 확인).
-  - **LSE 드라이브를 HIGH로 올린 이유**: X2의 ESR 최대 50kΩ(T1 등급) 기준 `gm_crit = 4·ESR·(2πf)²·(C0+CL)² ≈ 0.42 µA/V`. Table 80의 Gmcritmax는 LSEDRV=00에서 0.5 µA/V라 여유가 **1.2배**뿐이다. LSEDRV=11(2.7 µA/V)이면 **6.4배**로 AN2867 권장(≥5)을 만족한다. 추가 소모는 410nA → 700nA로 무시 가능하고, 크리스털 정격 드라이브가 0.5mW라 과구동 우려도 없다. ⚠ **CubeMX 기본값은 LOW이므로 재생성 시 되돌아간다 — 재생성 후 반드시 HIGH로 복구할 것.**
+  - **LSE 드라이브를 HIGH로 올린 이유**: X2의 ESR 최대 50kΩ(T1 등급) 기준 `gm_crit = 4·ESR·(2πf)²·(C0+CL)² ≈ 0.42 µA/V`. Table 80의 Gmcritmax는 LSEDRV=00에서 0.5 µA/V라 여유가 **1.2배**뿐이다. LSEDRV=11(2.7 µA/V)이면 **6.4배**로 AN2867 권장(≥5)을 만족한다. 추가 소모는 410nA → 700nA로 무시 가능하고, 크리스털 정격 드라이브가 0.5mW라 과구동 우려도 없다. **CubeMX 기본값은 LOW이므로 재생성 시 되돌아간다 — 재생성 후 반드시 HIGH로 복구할 것.**
   - **로드 커패시터 적합성 확인**: X1 CL 8pF vs 보드 C22/C23 8.2pF → 실효 ≈7.6pF. X2 CL 6.0pF vs C16/C17 6.8pF + CS_PARA ≈3pF → 실효 ≈6.4pF. 둘 다 수십 ppm 오차로 CAN 요구치(3000ppm) 대비 무해.
   - **전류 영향**: 3.3V에 HSE +1.10mA(Table 79, 8MHz 910µA↔48MHz 1960µA 보간) + LSE +0.0007mA. 평시 19.42 → 20.52mA(ICL 160mA의 12.8%). 시스템 총 전력 1.673 → 1.679W.
-  - ⚠ **브링업 주의 2건**: ⑴ HSE/LSE가 기동하지 않으면 `HAL_RCC_OscConfig()` 실패 → `Error_Handler()` 무한루프(LED_ERR 점등)로 부팅 불가. 내부 RC였을 때는 없던 실패 모드다. 필요 시 CSS(Clock Security System)로 폴백을 검토할 것. ⑵ RTC 클럭 소스 변경 시 HAL이 백업 도메인을 리셋하므로(`stm32u5xx_hal_rcc_ex.c`의 `__HAL_RCC_BACKUPRESET_FORCE/RELEASE`) **첫 부팅에서 RTC 시각과 백업 레지스터가 초기화된다.**
+  - **브링업 주의 2건**: ⑴ HSE/LSE가 기동하지 않으면 `HAL_RCC_OscConfig()` 실패 → `Error_Handler()` 무한루프(LED_ERR 점등)로 부팅 불가. 내부 RC였을 때는 없던 실패 모드다. 필요 시 CSS(Clock Security System)로 폴백을 검토할 것. ⑵ RTC 클럭 소스 변경 시 HAL이 백업 도메인을 리셋하므로(`stm32u5xx_hal_rcc_ex.c`의 `__HAL_RCC_BACKUPRESET_FORCE/RELEASE`) **첫 부팅에서 RTC 시각과 백업 레지스터가 초기화된다.**
   - 빌드: 전 게이트 OFF / `PHASE25_CAN_TX=1` 양쪽 모두 프로젝트 코드 경고 0 (잔존 경고 5건은 전부 서드파티 `Lib/MCP251XFD`·`Middlewares/ST/filex`).
 
 - [x] **`ExtCAN_Wake()` 실패 시 MCP2518FD가 깨어난 채로 영구 고착** (2026-08-21 코드 점검 발견·수정)
@@ -596,11 +596,11 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - 같은 데이터시트 **Figure 7 (Supply Current, IIO vs. Data Rate)** 에 **VIO = 3.3 V 곡선이 별도로 있고**, 100 kbps~1 Mbps 구간에서 거의 평탄하게 **≈0.85 mA**를 가리킨다(VIO = 5 V 곡선은 1.5~1.7 mA로 Table 1과 일치). 즉 기존 값은 약 2배 과대평가였다.
   - **정정**: 소자당 1.60 → **0.85 mA**, 2개 합계 3.20 → **1.70 mA**. 3.3 V 레일 평시 20.64 → **19.14 mA**, 피크 139.81 → **138.31 mA**(ICL 160 mA의 86 %). 시스템 총 전력 1.680 → **1.671 W**.
   - **재확인한 항목(변경 없음)**: ICC(5 V측)는 Table 1의 리세시브 29 typ / 도미넌트 195 typ / 1 Mbps 139 typ이 맞고, 시험조건 `RL = 60 Ω, RS = low`도 보드와 일치한다(넷리스트: `IC2.18 → CAN_GND`, `IC4.18 → CAN_GND_2`로 RS가 절연 GND 직결 = high-speed 모드). 500 kbps 연속 부하의 113 mA는 Figure 5의 VCC = 5 V 곡선 직독값이다.
-  - ⚠ VIO = 3.3 V 조건의 **max 규격은 데이터시트에 없다**(Figure 7은 typ 곡선). 0.85 mA는 typ이며, 3.3 V 레일 여유가 큰 구간이라 판정에는 영향이 없다.
+  - VIO = 3.3 V 조건의 **max 규격은 데이터시트에 없다**(Figure 7은 typ 곡선). 0.85 mA는 typ이며, 3.3 V 레일 여유가 큰 구간이라 판정에는 영향이 없다.
 
 - [x] **ThreadX 스택 오버플로 검출 활성화** (2026-08-21 전체 코드 점검)
   - `tx_user.h`의 `TX_ENABLE_STACK_CHECKING`이 주석 처리돼 있어, 스택이 넘쳐도 검출 없이 인접 메모리를 덮어썼다. 스레드 스택이 1024 B(MCP_RX/UART/UART_RX)·2048 B(SD_Logger/FileX)인데 FileX·HAL 호출이 얹혀 여유가 크지 않다.
-  - ⚠ **검사만 켜면 무의미하다**: ThreadX의 `_tx_thread_stack_error_handler()`는 애플리케이션 콜백이 등록돼 있지 않으면 인터럽트만 껐다 켜고 그냥 반환한다(소스 확인). 그래서 `app_threadx.c`에 `App_StackErrorHandler()`를 만들고 `tx_thread_stack_error_notify()`로 등록했다.
+  - **검사만 켜면 무의미하다**: ThreadX의 `_tx_thread_stack_error_handler()`는 애플리케이션 콜백이 등록돼 있지 않으면 인터럽트만 껐다 켜고 그냥 반환한다(소스 확인). 그래서 `app_threadx.c`에 `App_StackErrorHandler()`를 만들고 `tx_thread_stack_error_notify()`로 등록했다.
   - 핸들러는 **최소 동작만** 한다 — `LED_ERR` 점등 + `SystemState.error = 1`. LOG 패킷을 만들지 않는 이유: 이 콜백은 **이미 스택이 손상된 스레드**에 대해 인터럽트가 차단된 상태로 불리므로, `PacketBuilder_Create()`가 손상된 스택에 지역 버퍼를 잡는 것도 `tx_queue_send()`로 차단 구간을 늘리는 것도 부적절하다. 어느 스레드였는지는 디버거에서 `thread_ptr->tx_thread_name`으로 확인한다.
   - 비용: ROM +1,288 B(68,064 → 69,352), RAM +8 B. TX 바이트풀은 16,384 B 중 7,168 B 사용이라 여유 불변.
   - 빌드 검증: 게이트 OFF / `PHASE25=1` / **전 게이트 ON** 3가지 조합 모두 프로젝트 코드 경고 0.
@@ -658,7 +658,7 @@ STM32U575xx + ThreadX 기반 텔레메트리 펌웨어를 **기능별 점진적 
   - **부수 확인**: `design.md:633`은 "전체 로그 파일에도 규정 데이터 포함 모든 패킷이 기록된다"고 서술했으나 실제 코드는 `continue`로 빠져 `_reg.log`에**만** 기록하고 있었다 — 문서와 코드가 어긋나 있었고, 이번 변경으로 문서 서술이 실제 동작과 일치하게 됐다.
   - **문서**: `design.md`(SD_Logger 절, 파일명 규칙, 스케줄 표, PackFloat2 주석, flush 근거), `requirements.md`(4, 스케줄 항목, 8.7, 11.3) 갱신. 한/영 구조 대조 일치(헤딩 56/56, 코드펜스 60/60 · 32/32, 0/0).
   - **빌드**: 게이트 OFF(ROM 69,352 / RAM 50,848) · 전 게이트 ON(ROM 108 KB / RAM 60,304) 모두 프로젝트 코드 경고 0.
-  - ⚠ **남은 정리 대상**: 이전 항목에서 보고한 "`solar_accumulated_energy`가 지상국에 도달하지 않는다"는 건은 **본 변경으로 소멸**했다(값 자체가 존재하지 않았음). 태양광 누적 발전량이 실제로 필요해지면 MPPT 출력 적산을 펌웨어에 새로 구현해야 하며, 그때 `KEY_SYS_RESERVED15`가 아닌 **새 키(16 이상)** 를 할당할 것.
+  - **남은 정리 대상**: 이전 항목에서 보고한 "`solar_accumulated_energy`가 지상국에 도달하지 않는다"는 건은 **본 변경으로 소멸**했다(값 자체가 존재하지 않았음). 태양광 누적 발전량이 실제로 필요해지면 MPPT 출력 적산을 펌웨어에 새로 구현해야 하며, 그때 `KEY_SYS_RESERVED15`가 아닌 **새 키(16 이상)** 를 할당할 것.
 
 - [x] **FDCAN1 재동기화 폭 SJW 1 → 3** (2026-08-21 4차 코드 점검)
   - **비트레이트는 바뀌지 않는다.** SJW는 산식 `커널 / (Prescaler × (1 + TSeg1 + TSeg2))`에 들어가지 않는다. 변경 전후 모두 `80 MHz / (10 × 16) = 500 kbps`, NBT 16 tq, 샘플포인트 `(1+12)/16 = 81.25 %`로 **동일**하다. 바뀌는 것은 한 비트당 재동기화로 비트 경계를 옮길 수 있는 폭뿐이다.
@@ -791,7 +791,7 @@ NVIC 같은 SCS 영역은 실행 중 판독 자체가 부정확했다(`ISPR = 0x
   - `PRER = 0x007F00FF`(Async 127 / Sync 255) → 32768 / (128 x 256) = 1.000 Hz.
     LSE 전환 시 `SynchPrediv` 를 249(LSI용)에서 255로 고친 것이 실기에서 확인됐다.
   - `ICSR = 0x27`(INITS·RSF) — 초기화 완료, 섀도 동기 정상. TR 이 5초에 5초 증가.
-  - ⚠ **함정**: `RTC_TR` 을 읽으면 섀도 레지스터가 잠기고 `RTC_DR` 을 읽어야 풀린다.
+  - **함정**: `RTC_TR` 을 읽으면 섀도 레지스터가 잠기고 `RTC_DR` 을 읽어야 풀린다.
     `TR` 만 반복해 읽으면 멈춘 값이 계속 나온다(`rtc_manager.c` 주석이 경고하는 그것).
     디버거로 확인할 때도 매번 `TR → DR` 순서로 읽어야 한다.
 
@@ -1135,7 +1135,7 @@ FIFO 를 비운다. **버스 포화에서도 프레임을 잃지 않는다.**
 
 `build_dummy.sh` 가 역할별로 SN 을 고정하며 `WSC_DUMMY_SN` 으로 덮어쓸 수 있다.
 
-⚠ 판별 과정에서 `verify_image` 로 세 더미를 모두 halt 시켜 놓고 재개를 잊어
+판별 과정에서 `verify_image` 로 세 더미를 모두 halt 시켜 놓고 재개를 잊어
 Bus A 가 1분 넘게 죽었다. 더미를 halt 했으면 반드시 `reset run` 으로 되돌릴 것.
 
 
@@ -1262,10 +1262,10 @@ TOP 의 PackCurrent 없는 슬롯 시프트도 정확히 반영돼 있다.
 
 | 시나리오 | 기대 | 결과 |
 |---|---|---|
-| 수신 10건 / 억제 9씩 | 실발생 100 | 100 ✅ |
-| `ERR_TIMEOUT` 경과 8500ms | 억제 0 | 0 ✅ |
-| `ext_can_controller` 발 TX_FAIL 2종 | 억제 0, 문구 구분 | ✅ |
-| 정상 데이터 키 회귀 (SOC 856‰) | 85.6% | 85.6% ✅ |
+| 수신 10건 / 억제 9씩 | 실발생 100 | 100 |
+| `ERR_TIMEOUT` 경과 8500ms | 억제 0 | 0 |
+| `ext_can_controller` 발 TX_FAIL 2종 | 억제 0, 문구 구분 | 확인 |
+| 정상 데이터 키 회귀 (SOC 856‰) | 85.6% | 85.6% |
 
 실 스트림 15초에서 1378패킷 디코드 / 실패 1건(포트 개방 시 잘린 첫 프레임).
 
@@ -1319,13 +1319,13 @@ TOP 의 PackCurrent 없는 슬롯 시프트도 정확히 반영돼 있다.
 
 | 시나리오 | lag | 결과 |
 |---|---|---|
-| 실시간 수신 | 0 ms | ✅ |
-| 지상국 정체 1.5초 후 재개 | 1513 ms | ✅ |
-| 백로그 800ms 소화 | 715 ms | ✅ |
-| 백로그 1.3초 소화 | 216 ms | ✅ |
-| 완전히 따라잡음 | 0 ms | ✅ |
-| 차량 리셋(가동 2초 후) | 0 ms | ✅ 기준선 재설정 |
-| 재연결 기록 | 1회 / 28450B 폐기 | ✅ |
+| 실시간 수신 | 0 ms | 확인 |
+| 지상국 정체 1.5초 후 재개 | 1513 ms | 확인 |
+| 백로그 800ms 소화 | 715 ms | 확인 |
+| 백로그 1.3초 소화 | 216 ms | 확인 |
+| 완전히 따라잡음 | 0 ms | 확인 |
+| 차량 리셋(가동 2초 후) | 0 ms | 기준선 재설정 |
+| 재연결 기록 | 1회 / 28450B 폐기 | 확인 |
 
 실포트 검증: 동글 미연결 상태에서 2초 주기 재시도가 도는 것과, 로그가 90초에 3줄로
 줄어든 것을 확인했다. **백로그 배출 자체는 동글이 있어야 확인된다** — 다음 보드 연결
@@ -1764,13 +1764,13 @@ sticky 값이라 고장이 지속되면 DETAIL 주기마다 한 번씩 기록된
 
 | 항목 | 결과 |
 |---|---|
-| 플래그 0 이면 기록 안 함 | ✅ 정상 상태를 오염시키지 않음 |
-| MPPT3 0x40 기록 (소스/키/상세/레벨) | ✅ |
-| 다음 주기 0 으로 돌아가도 이력 유지 | ✅ |
-| 같은 비트 재발 시 횟수만 증가 | ✅ 3회 |
-| 다른 비트 패턴은 별도 행 | ✅ |
-| 모터 Error=ERROR / Limit=WARNING | ✅ |
-| ERR_KEY 이벤트와 공존 | ✅ |
+| 플래그 0 이면 기록 안 함 | 정상 상태를 오염시키지 않음 |
+| MPPT3 0x40 기록 (소스/키/상세/레벨) | 확인 |
+| 다음 주기 0 으로 돌아가도 이력 유지 | 확인 |
+| 같은 비트 재발 시 횟수만 증가 | 3회 |
+| 다른 비트 패턴은 별도 행 | 확인 |
+| 모터 Error=ERROR / Limit=WARNING | 확인 |
+| ERR_KEY 이벤트와 공존 | 확인 |
 
 
 ### 백로그 배출 — 두 번 더 틀리고 고침 (2026-09-02)
@@ -1994,9 +1994,9 @@ SetTime 을 건너뛴다("한 번이라도 설정했으면 통과"). 그대로 �
 | 항목 | 결과 |
 |---|---|
 | 빌드·플래시 후 RTC | **2026-09-02 18:26:47** (PC 18:26:52, 5초 차 = 빌드->플래시->부팅 지연) |
-| 요일 | 코드 3 = 수요일 ✅ |
+| 요일 | 코드 3 = 수요일 |
 | 예상 파일명 | `260902_182647.log` |
-| **같은 펌웨어 리셋** | 18:27:18 -> 리셋 -> **18:27:39** (유지, 빌드 시각으로 안 되돌아감) ✅ |
+| **같은 펌웨어 리셋** | 18:27:18 -> 리셋 -> **18:27:39** (유지, 빌드 시각으로 안 되돌아감) |
 | SD | `sd_ok/sd_ready=1`, `buf_used` 112~496 순환, LED 정상 |
 
 #### 남는 제약 (문서화)
@@ -2058,7 +2058,7 @@ signature(0x1FE)     = 55 AA
 파티션 카드에서는 파티션 시작 LBA, 비파티션(슈퍼플로피)에서는 0 이라 원래 동작과 같다.
 빌드 경고 0.
 
-**⚠ 벤더 미들웨어 수정이라 CubeMX 재생성 시 되돌아간다.** 드라이버 주석에 명시했다.
+**벤더 미들웨어 수정이라 CubeMX 재생성 시 되돌아간다.** 드라이버 주석에 명시했다.
 
 #### 데이터
 
@@ -2083,9 +2083,9 @@ Alive-Flag 방식은 **플래그가 하나라도 안 서면 보드를 리셋**�
 
 | 확인 | 결과 |
 |---|---|
-| 요구 마스크 | 게이트별 조건부 -> 현재 `UART\|SD\|VCULCD` (0x0D). PHASE45 가 꺼져 있어 UART_RX 는 요구하지 않는다 ✅ |
-| 직접 IWDG 리프레시 | `ext_can_controller.c` 등 나머지는 전부 `TEMP_IWDG_REFRESH` 아래. `#if PHASE6 && TEMP_IWDG_REFRESH` 빌드 가드가 동시 활성을 막는다 ✅ |
-| Power_check(PD6) | HIGH 실측 -> 오탐 전원강하 없음 ✅ |
+| 요구 마스크 | 게이트별 조건부 -> 현재 `UART\|SD\|VCULCD` (0x0D). PHASE45 가 꺼져 있어 UART_RX 는 요구하지 않는다 |
+| 직접 IWDG 리프레시 | `ext_can_controller.c` 등 나머지는 전부 `TEMP_IWDG_REFRESH` 아래. `#if PHASE6 && TEMP_IWDG_REFRESH` 빌드 가드가 동시 활성을 막는다 |
+| Power_check(PD6) | HIGH 실측 -> 오탐 전원강하 없음 |
 | 플래그 여유 | 검사 2s / IWDG 4s. 최악 대기(큐 타임아웃)는 2s 지만 스케줄러가 PRIMARY 를 1s 마다 큐에 넣어 스레드가 1s 내 기상 -> **2배 여유** |
 
 게이트를 켜면서 `TEMP_IWDG_REFRESH` 를 0 으로 내렸다(가드 요구사항).

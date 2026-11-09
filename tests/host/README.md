@@ -19,7 +19,7 @@ gcc -std=c11 -Wall -Wextra -Wconversion \
 ./tests/host/test_host.exe
 ```
 
-> ✅ **2026-08-24 해소**: MinGW-w64(`winget install BrechtSanders.WinLibs.POSIX.UCRT`, gcc 16.1.0)를
+> **2026-08-24 해소**: MinGW-w64(`winget install BrechtSanders.WinLibs.POSIX.UCRT`, gcc 16.1.0)를
 > 설치해 **전체 테스트를 실제로 실행했고 전부 PASS**했다. `test_crc8_table_equivalence()` 포함
 > 미실행 항목이 더 이상 없다(그전까지 PowerShell로 우회 검증하던 CRC 등가성도 이제 여기서 확인된다).
 >
@@ -29,11 +29,11 @@ gcc -std=c11 -Wall -Wextra -Wconversion \
 ## 검증 항목 (마지막 실행: 2026-08-24, 전부 PASS)
 
 - **Property 1** (라운드트립): `sizeof(LOG)==16` 호스트 컴파일러에서도 확인
-- **신규 2026-07-31** (`test_crc8_table_equivalence`, ⏳ 미실행): `packet_builder.c`의 crc8이 테이블
+- **신규 2026-07-31** (`test_crc8_table_equivalence`, 미실행): `packet_builder.c`의 crc8이 테이블
   룩업으로 바뀌었으므로, 원본 비트 단위 구현을 테스트 파일에 참조로 두고 **256 바이트값 전수 +
   랜덤 15바이트 20,000회 + 알려진 답(`CRC-8('123456789')==0xF4`)** 으로 대조한다. 온-와이어
   체크섬이 바뀌면 지상국 디코더가 전부 깨지므로 이 등가성은 반드시 유지되어야 한다.
-- **신규 2026-07-31** (`test_struct_layout` 보강, ⏳ 미실행): `LOG_QUEUE_MSG_WORDS * 4 == sizeof(LOG)`
+- **신규 2026-07-31** (`test_struct_layout` 보강, 미실행): `LOG_QUEUE_MSG_WORDS * 4 == sizeof(LOG)`
   — 불일치 시 ThreadX 큐 용량이 조용히 절반이 된다(2026-07 8→4 ULONG 수정의 회귀 방지).
 - **Property 2** (체크섬 무결성): 패킷 2000개 × 120비트 플립 = 240,000회, 전부 검출
 - **Property 3** (float 패킹): `PackFloat2`/`UnpackFloat2` 5,000회 라운드트립

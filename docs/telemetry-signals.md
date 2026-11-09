@@ -4,7 +4,7 @@
 > **신호별 CAN ID·오프셋·티어·KEY의 정본(SSOT)은 [`can-signal-summary.md`](can-signal-summary.md)** —
 > 지상국 디코더·코드 대조는 반드시 그 문서 최신본 기준으로 한다. 이 문서는 "왜 이렇게 설계했는가"만 다룬다.
 >
-> **상태: 🟢 BMS(HV)·MPPT 확정 / 🟠 Motor 잠정(virtual) — VCU 미확정. (2026-08 LV BMS 제거)**
+> **상태: BMS(HV)·MPPT 확정 / Motor 잠정(virtual) — VCU 미확정. (2026-08 LV BMS 제거)**
 > 설계 원칙: **확장에 견디도록 각 차원에 버퍼(빈 자리)를 미리 확보한다.**
 
 ---
@@ -64,13 +64,13 @@
 
 | 단계 | 점검 항목 | 상태 |
 |---|---|---|
-| CAN RX | 범위 필터 2개로 전 소스 커버 | ✅ (can-signal-summary.md §1) |
-| 변환 | float→int·엔디안·전압 재스케일을 RX 시점 1회 처리 | ✅ |
-| VehicleData | 정수 단일 표현 → 하위 경로 분기 없음 | ✅ |
-| 분기 | SD=전체 / 무선=선별, 티어(PRIMARY/DETAIL/SD_ONLY)로 제어 | ✅ |
-| 스케줄 | 단일 베이스 틱(100ms)에서 PRIMARY/DETAIL 파생 + DETAIL 10서브틱 분산 | ✅ (2026-07, 큐 버스트 해소) |
-| 무선 용량 | 현재 사용량·여유는 can-signal-summary.md §8 참조 | ✅ |
-| 프레이밍 | 큐=raw 16B, 송신 직전 COBS → SD/무선 디코더 공유 | ✅ |
+| CAN RX | 범위 필터 2개로 전 소스 커버 | (can-signal-summary.md §1) |
+| 변환 | float→int·엔디안·전압 재스케일을 RX 시점 1회 처리 | 확인 |
+| VehicleData | 정수 단일 표현 → 하위 경로 분기 없음 | 확인 |
+| 분기 | SD=전체 / 무선=선별, 티어(PRIMARY/DETAIL/SD_ONLY)로 제어 | 확인 |
+| 스케줄 | 단일 베이스 틱(100ms)에서 PRIMARY/DETAIL 파생 + DETAIL 10서브틱 분산 | (2026-07, 큐 버스트 해소) |
+| 무선 용량 | 현재 사용량·여유는 can-signal-summary.md §8 참조 | 확인 |
+| 프레이밍 | 큐=raw 16B, 송신 직전 COBS → SD/무선 디코더 공유 | 확인 |
 
 ---
 
@@ -78,12 +78,12 @@
 
 | 버스 | 컨트롤러 | 역할 / 연결 장치 | 속도 | RX | TX |
 |---|---|---|---|---|---|
-| **Bus A** | FDCAN1 (내부) | **BMS(BOT+TOP) · MPPT ×4 · Motor** | 500 kbps | ✅ | ✖ |
-| **Bus B** | MCP2518FD (SPI1) | LCD 보드 (지상국 메시지 TX) | 500 kbps | _[미정]_ | ✅ |
+| **Bus A** | FDCAN1 (내부) | **BMS(BOT+TOP) · MPPT ×4 · Motor** | 500 kbps | 확인 | X |
+| **Bus B** | MCP2518FD (SPI1) | LCD 보드 (지상국 메시지 TX) | 500 kbps | _[미정]_ | 확인 |
 
-> **CAN 버스 부하** (500 kbps): BMS 70여 ID + MPPT 21 ID + Motor ~15 ID(🟠 잠정), 100ms 주기 가정
+> **CAN 버스 부하** (500 kbps): BMS 70여 ID + MPPT 21 ID + Motor ~15 ID(잠정), 100ms 주기 가정
 > ≈ 110~125 kbps = **~25% 점유**. 여유 충분.
-> ✅ **해결됨 (2026-07)**: BMS 측 비트타이밍 오계산 경고는 타 팀과 500kbps 합의로 해소. 실측 권장.
+> **해결됨 (2026-07)**: BMS 측 비트타이밍 오계산 경고는 타 팀과 500kbps 합의로 해소. 실측 권장.
 
 > CAN ID 맵·FDCAN1 필터 상세는 **can-signal-summary.md §1** 참조 (여기서는 원칙만 유지 — ID가
 > 개정 때마다 이 문서까지 갱신해야 하는 이중 관리를 피하기 위함, 2026-07-31 문서 정리).

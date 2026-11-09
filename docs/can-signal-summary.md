@@ -3,9 +3,9 @@
 > 지금까지 확정된 CAN ID · 신호 · 패킷 묶음 · VehicleData 매핑의 **빠른 참조용** 파일.
 > 상세 설계 원칙은 `telemetry-signals.md` 참조.
 >
-> **상태**: 🟢 BMS(HV) Prohelion D1000 Gen1 (2026-09 교체) / 🟢 MPPT 확정 / 🟠 Motor **잠정(virtual)** — VCU 미확정, WaveSculptor22 매뉴얼 기반 placeholder 
+> **상태**: BMS(HV) Prohelion D1000 Gen1 (2026-09 교체) / MPPT 확정 / Motor **잠정(virtual)** — VCU 미확정, WaveSculptor22 매뉴얼 기반 placeholder 
 >
-> 🛠 **2026-09-18 신뢰성 보강 — 지상국 반영 완료(ArrowPoint `LogErrorKey`/`WscTelemetryDecoder`)**:
+> **2026-09-18 신뢰성 보강 — 지상국 반영 완료(ArrowPoint `LogErrorKey`/`WscTelemetryDecoder`)**:
 > - 새 오류 키 **`ERR_STACK_OVERFLOW` = 0x94** (CRITICAL, 부팅 후 1회): value = [스레드 번호 u32 (types.h `BOOT_THREAD_*`)][RCC_CSR u32]. 스택 오류 시 보드는 이제 **즉시 리셋**한다.
 > - **`ERR_WATCHDOG` = 0x91** 을 실제로 사용 (ERROR, 부팅 후 1회): 직전 리셋이 IWDG. value = [RCC_CSR u32][0]. 두 보고 모두 무선 1회 + SD 세션 헤더에 기록.
 > - `ERR_INIT_FAIL` 은 이제 **새 비트가 생길 때마다** 전체 마스크를 다시 보낸다(bit2 = ADC).
@@ -13,7 +13,7 @@
 > - FDCAN 수신: ID별 최소 DLC 미달 프레임은 값·신선도를 갱신하지 않고 버린다(`g_can_short_frames`).
 > - SD: 드라이버 대기 한도 10s → **750ms**(워치독 4s보다 짧게), 전송 완료 콜백에서만 SD 생존 비트 갱신. 쓰기/flush 오류 상태 분리.
 >
-> 🚨🚨 **2026-09 HV BMS를 Prohelion D1000 Gen1(BMU 1 + CMU 4, 32S)로 교체 — 지상국 디코더 필수 재동기**:
+> **2026-09 HV BMS를 Prohelion D1000 Gen1(BMU 1 + CMU 4, 32S)로 교체 — 지상국 디코더 필수 재동기**:
 > - BMU CAN 베이스를 **0x040**으로 설정 → BMS ID: 0x040(heartbeat), 0x041~0x04C(CMU 1~4), 0x134~0x13D(팩). **리틀엔디안**. 필터 변경 없음. 상세 §2.
 > - **LOG source 변경**: BMS 데이터는 이제 **`SRC_BMS` = 10**(구 `SRC_RESERVED2`, 데이터에 쓰인 적 없음). 구 `SRC_BMS_BOT`(1)/`SRC_BMS_TOP`(2)은 `SRC_RETIRED_*`로 **퇴역·재사용 금지**. 다른 source 값은 불변.
 > - **BMS 키 전면 교체**(§2-4): PRIMARY 8→**3**(PACK_VI/SOC_TEMP/STATUS), DETAIL 18→**16**(팩 4 + CMU 12), SD_ONLY 40→**5**(팩 BAL_PRECHG 1 + CMU 시리얼 4). 식별 정보(DeviceID·Serial·FW build·HW ver·Model ID)와 v4 전용 12V 전압은 수신하지 않는다(2026-09-16).
@@ -21,7 +21,7 @@
 > - `ERR_TIMEOUT` 경고 value[1]에 **CMU 번호(1~4, 팩=0)** 추가. CMU 임계는 3000ms.
 > - 아래 2026-07-24 PR#31 BMS 이력은 **폐기된 구 BMS** 기록이다.
 >
-> ⚠️⚠️ **(폐기됨) 2026-07-24 BMS(HV) CAN ID 전면 재배치 (PR#31, `CAN DATA/BMS_CAN_ID_명세_최신_PR31.xlsx` 기준) — 지상국 디코더 필수 재동기**:
+> **(폐기됨) 2026-07-24 BMS(HV) CAN ID 전면 재배치 (PR#31, `CAN DATA/BMS_CAN_ID_명세_최신_PR31.xlsx` 기준) — 지상국 디코더 필수 재동기**:
 > BMS(HV) 전체가 우선순위(PRIMARY/DETAIL/SD_ONLY) 기반 연속 대역 **0x040~0x07F**로 이전됨. 기존 0x500대/0x1xx/0x2xx 체계는 완전히 폐기.
 > - **PRIMARY**: BOT 0x040(Fault)/0x041(Volt)/0x042(Curr)/**0x043(SOC, 신규)**, TOP 0x044/0x045/0x046/**0x047(SOC)**
 > - **DETAIL**: BOT 0x048~0x050(9개), TOP 0x051~0x059(9개)
@@ -31,13 +31,13 @@
 > - FDCAN1 HW 필터: 0(**0x040~0x34F**, BMS(HV) 신규대역+레거시+MPPT ×4 / 2026-08 MPPT4 수용 위해 0x33F→0x34F 확장) / 1(**0x400~0x6FF**, Motor + LV BMS / 2026-08 LV 제거로 0x4FF 로 줄였다가 2026-09-23 LV 복원으로 0x6FF 로 되돌림).
 > - (히스토리) SOC는 처음엔 BOT 0x503/TOP 0x603로 도입하려다 BMS(LV) CMU0(0x601~0x603)와 충돌해 0x504로, 이후 PRIMARY 대역 편입 요청에 따라 최종 0x043/0x047로 재조정됨.
 >
-> ⚠️ **2026-07-13 대규모 갱신(위 PR#31로 대체된 과거 이력)**: (1) MPPT/Motor 무선 티어(PRIMARY/DETAIL/SD_ONLY) 재배치 — `CAN DATA/CAN_수신_데이터_정리본.xlsx` 기준. (2) BMS(LV, Prohelion D1000 Gen1) 신규 구현 — §4.5. (3) HV BMS TOP RUN ID 0x600→0x503 이전(LV base 0x600 충돌 회피, 이후 위 PR#31로 0x047로 재이전).
+> **2026-07-13 대규모 갱신(위 PR#31로 대체된 과거 이력)**: (1) MPPT/Motor 무선 티어(PRIMARY/DETAIL/SD_ONLY) 재배치 — `CAN DATA/CAN_수신_데이터_정리본.xlsx` 기준. (2) BMS(LV, Prohelion D1000 Gen1) 신규 구현 — §4.5. (3) HV BMS TOP RUN ID 0x600→0x503 이전(LV base 0x600 충돌 회피, 이후 위 PR#31로 0x047로 재이전).
 >
-> ✅ **2026-07 갱신**: BMS 상세온도·쿨롱카운터, MPPT aux(+3/+4/+6), Motor DSP온도·SD_ONLY 진단 — 전부 파싱+송출 구현 완료. (BMS 상세 오프셋은 위 PR#31 기준 0x048~0x07F 대역으로 이전됨.)
+> **2026-07 갱신**: BMS 상세온도·쿨롱카운터, MPPT aux(+3/+4/+6), Motor DSP온도·SD_ONLY 진단 — 전부 파싱+송출 구현 완료. (BMS 상세 오프셋은 위 PR#31 기준 0x048~0x07F 대역으로 이전됨.)
 >
-> ✅ **크로스팀 이슈 해결(2026-07)**: BMS 보드(STM32U545) 자체 경고(비트타이밍 1.667Mbit/s 오계산, Classic CAN 상한 초과 가능성)는 **타 팀과 통신 속도·설정 합의 완료로 해소됨** — 500kbps로 통일. 보드 실측으로 최종 확인 권장.
+> **크로스팀 이슈 해결(2026-07)**: BMS 보드(STM32U545) 자체 경고(비트타이밍 1.667Mbit/s 오계산, Classic CAN 상한 초과 가능성)는 **타 팀과 통신 속도·설정 합의 완료로 해소됨** — 500kbps로 통일. 보드 실측으로 최종 확인 권장.
 >
-> ✅ **WaveSculptor22 공식 매뉴얼 확보(2026-07)**: `CAN DATA/TritiumWaveSculptor22_Manual.pdf` Appendix C(CAN Communications Protocol)를 직접 추출해 대조한 결과, 기존 구현에서 **바이트 순서 오류 5건**(V Vector, I Vector, BackEMF, 전원 레일, Slip Speed) 발견·수정. 상세: §4, 아래 "구현 시 발견된 수정 사항" 참조. (VCU 재전송 경로는 여전히 미확정 — Motor 상태는 🟠 잠정 유지)
+> **WaveSculptor22 공식 매뉴얼 확보(2026-07)**: `CAN DATA/TritiumWaveSculptor22_Manual.pdf` Appendix C(CAN Communications Protocol)를 직접 추출해 대조한 결과, 기존 구현에서 **바이트 순서 오류 5건**(V Vector, I Vector, BackEMF, 전원 레일, Slip Speed) 발견·수정. 상세: §4, 아래 "구현 시 발견된 수정 사항" 참조. (VCU 재전송 경로는 여전히 미확정 — Motor 상태는 잠정 유지)
 
 ---
 
@@ -53,12 +53,12 @@
 | HW 필터 | 범위 | 커버 대상 |
 |---|---|---|
 | 0 | **0x040 ~ 0x34F** | BMS(HV) Prohelion 블록(0x040~0x13F, 2026-09) + MPPT ×4(0x310~0x346) |
-| 1 | **0x400 ~ 0x6FF** | Motor/VCU(0x4xx 🟠 잠정) + LV BMS(0x600~0x6FF) *(2026-09-23 LV 복원으로 0x4FF→0x6FF. 0x500~0x5FF 도 함께 열린다 — 지금 Bus A 에 쓰는 노드는 없음)* |
+| 1 | **0x400 ~ 0x6FF** | Motor/VCU(0x4xx 잠정) + LV BMS(0x600~0x6FF) *(2026-09-23 LV 복원으로 0x4FF→0x6FF. 0x500~0x5FF 도 함께 열린다 — 지금 Bus A 에 쓰는 노드는 없음)* |
 
 > 필터0의 0x040~0x34F는 중간에 빈 구간(0x080~0x110, 0x234~0x30F 등)을 포함하지만 하드웨어가 그대로 통과시키고 SW switch-case default에서 무시하므로 무해하다. `StdFiltersNbr`는 2 유지(CubeMX 생성코드 `fdcan.c` 수정 불필요), ID 판별은 SW switch-case.
-> ⚠️ **2026-08 MPPT 4대 증설로 필터0 상한을 0x33F→0x34F로 확장했다.** 이 상한을 넓히지 않으면 MPPT4(0x340~0x346)가 하드웨어 필터에서 전량 거부되어 SW까지 도달하지 못한다.
+> **2026-08 MPPT 4대 증설로 필터0 상한을 0x33F→0x34F로 확장했다.** 이 상한을 넓히지 않으면 MPPT4(0x340~0x346)가 하드웨어 필터에서 전량 거부되어 SW까지 도달하지 못한다.
 
-> ⚠️ **모터 데이터 경로**: 실제로는 VCU가 모터 컨트롤러 앞단에 위치하며, 우리는 **VCU가 재전송한 프레임**을 수신한다. VCU 설계 미완성이므로 아래 모터 매핑은 WaveSculptor22 네이티브 스펙을 그대로 가져온 **virtual placeholder**다. VCU CAN 출력 스펙 확정 시 ID·레이아웃·엔디안 전면 교체.
+> **모터 데이터 경로**: 실제로는 VCU가 모터 컨트롤러 앞단에 위치하며, 우리는 **VCU가 재전송한 프레임**을 수신한다. VCU 설계 미완성이므로 아래 모터 매핑은 WaveSculptor22 네이티브 스펙을 그대로 가져온 **virtual placeholder**다. VCU CAN 출력 스펙 확정 시 ID·레이아웃·엔디안 전면 교체.
 
 ---
 
@@ -71,7 +71,7 @@
 > RUN/TEST 프레임 구분(소스 측 명칭, `BMS_CAN_ID_명세.xlsx`의 시트명 유래)과는 다른 축이며,
 > BMS RUN 프레임은 거의 전부 PRIMARY로, TEST 프레임은 DETAIL 또는 SD_ONLY로 나뉘어 들어간다.
 
-### BMS(HV) — 23개 (Prohelion D1000 Gen1, 베이스 0x040, 리틀엔디안, 🟢 2026-09 교체)
+### BMS(HV) — 23개 (Prohelion D1000 Gen1, 베이스 0x040, 리틀엔디안, 2026-09 교체)
 
 | 대상 | 구분 | CAN ID | 수신 데이터 |
 |---|---|---|---|
@@ -92,7 +92,7 @@
 
 > 상세·비트 정의·무선 매핑: §2. BMU 블록 0x040~0x13F 전체와 부트로더 0x7F0~0x7F4는 우리 보드의 **송신 금지** ID다.
 
-### MPPT — 28개 (리틀엔디안 float, 🟢 확정 / 2026-08 3대→4대 증설로 21→28)
+### MPPT — 28개 (리틀엔디안 float, 확정 / 2026-08 3대→4대 증설로 21→28)
 
 | MPPT | 구분 | CAN ID | 수신 데이터 |
 |---|---|---|---|
@@ -107,7 +107,7 @@
 | #3 | (동일) | 0x330~0x336 | #1과 동일 오프셋 구조 (base=0x330) |
 | #4 | (동일) | 0x340~0x346 | #1과 동일 오프셋 구조 (base=0x340, **2026-08 증설**) |
 
-### Motor — 13개 (리틀엔디안 float, 🟠 잠정 — VCU 미확정, WaveSculptor22 virtual)
+### Motor — 13개 (리틀엔디안 float, 잠정 — VCU 미확정, WaveSculptor22 virtual)
 
 | 구분 | CAN ID | 수신 데이터 |
 |---|---|---|
@@ -129,9 +129,9 @@
 
 | 대분류 | CAN ID 개수 | 상태 |
 |---|---|---|
-| BMS(HV) | 23 | 🟢 Prohelion D1000 Gen1 (베이스 0x040: 0x040~0x04C, 0x134~0x13D, 2026-09) |
-| MPPT | 28 | 🟢 확정 (base 0x310/0x320/0x330/0x340 — 2026-08 4대 증설로 21→28) |
-| Motor | 13 | 🟠 잠정(VCU 미확정) |
+| BMS(HV) | 23 | Prohelion D1000 Gen1 (베이스 0x040: 0x040~0x04C, 0x134~0x13D, 2026-09) |
+| MPPT | 28 | 확정 (base 0x310/0x320/0x330/0x340 — 2026-08 4대 증설로 21→28) |
+| Motor | 13 | 잠정(VCU 미확정) |
 | **합계** | **64** | |
 
 ---
@@ -167,10 +167,10 @@
 | +0xFE~0xFF | 0x13E~0x13F | 0x6FE~0x6FF | 예약 | — |
 | 고정 | 0x7F0~0x7F4 | 0x7F0~0x7F4 | 부트로더 (베이스와 무관) — **송신 금지** | — |
 
-> ⚠ **CMU 번호 n은 BMU가 부팅 시 할당**한다. 배선상 몇 번째 모듈인지와 같다는 보장이 문서에 없으므로, 물리 위치는 **CMU Serial**(`KEY_BMS_CMU_SERIAL`)로 대조한다.
-> ⚠ **셀 전압은 signed**: -32768 = 셀 없음, -32767 = 여분 셀, 그 밖의 음수 = 이중 채널 불일치(신뢰 불가).
-> ⚠ **0x6F9 최소/최대 온도**는 문서상 u16이지만 비트가 같으므로 i16으로 받는다(영하 표현 대비).
-> ⚠ **버스 우선순위**: BMS 블록(0x040~0x13D)은 MPPT(0x310~)·Motor(0x4xx)보다 여전히 높다. 단 BMS 내부에서는 Prohelion 고정 배치 때문에 CMU 셀 프레임이 팩 핵심 프레임보다 ID가 낮다(바꿀 수 없음, 현재 부하 ~1.3%에선 무해).
+> **CMU 번호 n은 BMU가 부팅 시 할당**한다. 배선상 몇 번째 모듈인지와 같다는 보장이 문서에 없으므로, 물리 위치는 **CMU Serial**(`KEY_BMS_CMU_SERIAL`)로 대조한다.
+> **셀 전압은 signed**: -32768 = 셀 없음, -32767 = 여분 셀, 그 밖의 음수 = 이중 채널 불일치(신뢰 불가).
+> **0x6F9 최소/최대 온도**는 문서상 u16이지만 비트가 같으므로 i16으로 받는다(영하 표현 대비).
+> **버스 우선순위**: BMS 블록(0x040~0x13D)은 MPPT(0x310~)·Motor(0x4xx)보다 여전히 높다. 단 BMS 내부에서는 Prohelion 고정 배치 때문에 CMU 셀 프레임이 팩 핵심 프레임보다 ID가 낮다(바꿀 수 없음, 현재 부하 ~1.3%에선 무해).
 
 ### 2-2. 비트 정의
 
@@ -186,12 +186,12 @@
 | CMU 셀 전압·온도 (+1~+3+3n) | `data_16` (signed) | (DBC에 없음 — ID가 CMU 수에 따라 변함) | i16 |
 | 0x6F4/0x6F5 SOC | `data_fp` | float32 (`SIG_VALTYPE_ 1`) | float → u16 스케일 |
 | 0x6F6 충전 제어 3항목 | `data_16` | `@1-` | i16 |
-| 0x6F6 Total Pack Capacity | `data_u16` | `@1-` ⚠ 불일치 | u16 (실값 범위에선 무관) |
+| 0x6F6 Total Pack Capacity | `data_u16` | `@1-` 불일치 | u16 (실값 범위에선 무관) |
 | 0x6F8 Min/Max 셀전압 | `data_u16` | `@1+` | u16 |
 | 0x6F9 Min/Max 셀온도 | `data_u16` | `@1+` (0.1℃) | **i16** — 0~3276.7℃에선 동일, 영하가 2의 보수로 오면 i16만 맞음 |
 | 0x6FA 전압 / 전류 | `data_u32` / `data_32` | `@1+` / `@1-` | u32 / i32 |
-| 0x600 Serial | `data_u32` | `@1-` ⚠ 불일치 | u32 (식별자라 무관) |
-| **0x6F7 타이머 경과 플래그 위치** | **byte6** (`data_u8[6]`), byte4~5 Unused | **byte4** (`32\|8`), byte5~6 Unused | ⚠ 불일치 → `byte4 \| byte6` 로 읽음 (Unused 는 0이라 어느 쪽이 맞아도 동일). 실물 프레임으로 확정 필요 |
+| 0x600 Serial | `data_u32` | `@1-` 불일치 | u32 (식별자라 무관) |
+| **0x6F7 타이머 경과 플래그 위치** | **byte6** (`data_u8[6]`), byte4~5 Unused | **byte4** (`32\|8`), byte5~6 Unused | 불일치 → `byte4 \| byte6` 로 읽음 (Unused 는 0이라 어느 쪽이 맞아도 동일). 실물 프레임으로 확정 필요 |
 
 **예약 ID**: 데이터시트 원문 — "Do not transmit data on reserved IDs, as this may trigger configuration or boot load events and mode changes." → 송신 금지 목록(BMU 블록 전체 + 0x7F0~0x7F4)으로 반영됨.
 
@@ -219,7 +219,7 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 
 > 타임아웃 경고(`ERR_TIMEOUT`)는 팩(BMU 프레임, 1000ms)과 CMU 1~4(각 3000ms — CMU가 ~1Hz라 1000ms면 지터로 깜빡임)를 따로 감시한다. value[0]=source(10), **value[1]=CMU 번호(1~4, 팩은 0)**.
 >
-> **🚨 STATUS 패킷의 sticky 의미 (2026-09-16)** — BMU 송신(1Hz, 0x6F7 은 상태 변화 시에도)과 1s 스케줄러는 비동기라, 현재값만 보내면 1초 안에 떴다 사라진 고장이 한 번도 전송되지 않을 수 있다. 그래서 u32 와 컨택터 오류 비트는 **"직전 전송 이후 한 번이라도 떴던 비트"**(CAN RX 에서 OR 누적, 큐 투입 성공 시 해제), byte6(0x6FB 플래그)은 **현재값**이다. 지상국은 u32 를 "최근 1초 내 발생", byte6 을 "지금 상태"로 표기할 것. u32 의 bit31(`BMS_SEEN_PRECHARGE_ERROR`)은 텔레메트리 보드가 덧붙인 비트다(Prohelion 은 bit0~12만 사용).
+> **STATUS 패킷의 sticky 의미 (2026-09-16)** — BMU 송신(1Hz, 0x6F7 은 상태 변화 시에도)과 1s 스케줄러는 비동기라, 현재값만 보내면 1초 안에 떴다 사라진 고장이 한 번도 전송되지 않을 수 있다. 그래서 u32 와 컨택터 오류 비트는 **"직전 전송 이후 한 번이라도 떴던 비트"**(CAN RX 에서 OR 누적, 큐 투입 성공 시 해제), byte6(0x6FB 플래그)은 **현재값**이다. 지상국은 u32 를 "최근 1초 내 발생", byte6 을 "지금 상태"로 표기할 것. u32 의 bit31(`BMS_SEEN_PRECHARGE_ERROR`)은 텔레메트리 보드가 덧붙인 비트다(Prohelion 은 bit0~12만 사용).
 
 ### 2-5. 폐기된 구 BMS (BQ 기반 BOT/TOP, ~2026-08)
 
@@ -232,7 +232,7 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 
 > 제조사: Elmar Solar Best MPPT
 > **base 주소 = general_id(공장설정) + 로터리 스위치×0x10** (데이터시트 §8.3). 2026-07 general_id를 0x600→0x300으로 발주 반영 — 로터리 스위치 1/2/3/4 사용.
-> **⚠ 로터리 스위치를 반드시 1/2/3/4로 설정** (0이면 base=general_id 그대로라 충돌 가능)
+> **로터리 스위치를 반드시 1/2/3/4로 설정** (0이면 base=general_id 그대로라 충돌 가능)
 > 전체 신호 타입: **FLOAT** → CAN RX 시점에 scaled int로 변환하여 VehicleData 저장.
 > **2026-08: MPPT 3대 → 4대 증설.** #4만 신규 추가되고 #1~#3의 base 주소는 변경 없음.
 
@@ -260,10 +260,10 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 | +5 | 0x315 | 3 | Error_Flags | u8 | 비트 | **sticky OR 누적** | **DETAIL** — KEY_MPPT_TEMP_FLAGS[2] (2026-07-13 PRIMARY→DETAIL, 2026-08 sticky화) |
 | +5 | 0x315 | 4 | Mode | u8 | — | 그대로 | **DETAIL 1s** — KEY_MPPT_TEMP_FLAGS[3] |
 | +5 | 0x315 | 5 | Limit_Flags | u8 | 비트 | 그대로 | (미사용 — 슬롯 없음) |
-| +6 | 0x316 | 0~3 | PowerConn_Voltage | FLOAT | V | ×100 → u16 | DETAIL 1s — KEY_MPPT_AUX_2[0] ✅ |
-| +6 | 0x316 | 4~7 | PowerConn_Temp | FLOAT | ℃ | ×10 → i16 | DETAIL 1s — KEY_MPPT_AUX_2[1] ✅ |
+| +6 | 0x316 | 0~3 | PowerConn_Voltage | FLOAT | V | ×100 → u16 | DETAIL 1s — KEY_MPPT_AUX_2[0] |
+| +6 | 0x316 | 4~7 | PowerConn_Temp | FLOAT | ℃ | ×10 → i16 | DETAIL 1s — KEY_MPPT_AUX_2[1] |
 
-> ✅ 2026-07-13 티어 재배치: MPPT DETAIL(무선 1s)은 **TEMP_FLAGS(base+2+base+5), MAXLIM(base+4), AUX_2(base+6)** 3패킷/유닛 × **4유닛** = **12개**. SD_ONLY(무선 미전송)는 **AUX_1(base+3 12V/3V)** 1패킷/유닛 × 4 = **4개**. PRIMARY는 IV_IN_OUT만(4개).
+> 2026-07-13 티어 재배치: MPPT DETAIL(무선 1s)은 **TEMP_FLAGS(base+2+base+5), MAXLIM(base+4), AUX_2(base+6)** 3패킷/유닛 × **4유닛** = **12개**. SD_ONLY(무선 미전송)는 **AUX_1(base+3 12V/3V)** 1패킷/유닛 × 4 = **4개**. PRIMARY는 IV_IN_OUT만(4개).
 > (2026-08 4대 증설 반영 — 유닛당 패킷 구성은 동일하고 유닛 수만 3→4)
 
 ### RX 프레임 (STM32 → MPPT, 3개, 별도 설계)
@@ -276,13 +276,13 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 
 ---
 
-## 4. Motor (🟠 잠정 / virtual — WaveSculptor22 기반)
+## 4. Motor (잠정 / virtual — WaveSculptor22 기반)
 
-> **출처**: `CAN DATA/TritiumWaveSculptor22_Manual.pdf`(Tritium WaveSculptor 22 User's Manual TRI88.004 ver 4) Appendix C (CAN Comms Protocol) — ✅ 2026-07 원문 직접 확보·대조 완료 (이전엔 매뉴얼 없이 추정).
-> **base 주소**: 0x400 가정 (실제 VCU 재전송 ID로 교체 예정 — VCU 경유 구조는 여전히 미확정, Motor 상태 🟠 잠정 유지).
+> **출처**: `CAN DATA/TritiumWaveSculptor22_Manual.pdf`(Tritium WaveSculptor 22 User's Manual TRI88.004 ver 4) Appendix C (CAN Comms Protocol) — 2026-07 원문 직접 확보·대조 완료 (이전엔 매뉴얼 없이 추정).
+> **base 주소**: 0x400 가정 (실제 VCU 재전송 ID로 교체 예정 — VCU 경유 구조는 여전히 미확정, Motor 상태 잠정 유지).
 > **원본 타입**: 전부 **IEEE 754 32비트 float** → CAN RX 시점에 scaled int 변환 (MPPT와 동일 전략).
 > **엔디안**: 리틀엔디안(Intel) — 매뉴얼 §18.1.4 "least significant byte first" 확인됨(BMS와 반대, `__REV` 불필요).
-> **바이트 순서(중요)**: 매뉴얼 표는 "Variable / Bits" 형식으로 **먼저 나열된 변수가 bits 63..32(byte 4~7), 나중 변수가 bits 31..0(byte 0~3)**. ⚠️ 2026-07: 이 순서를 반대로 착각해 V/I Vector·BackEMF·전원레일·Slip Speed **5곳에서 바이트 순서 오류**가 있었음 — 매뉴얼 직접 대조로 발견·수정(`can_receiver.c` 참조). 아래 표는 전부 정정된 값.
+> **바이트 순서(중요)**: 매뉴얼 표는 "Variable / Bits" 형식으로 **먼저 나열된 변수가 bits 63..32(byte 4~7), 나중 변수가 bits 31..0(byte 0~3)**. 2026-07: 이 순서를 반대로 착각해 V/I Vector·BackEMF·전원레일·Slip Speed **5곳에서 바이트 순서 오류**가 있었음 — 매뉴얼 직접 대조로 발견·수정(`can_receiver.c` 참조). 아래 표는 전부 정정된 값.
 
 ### 4-1. 무선 PRIMARY 200ms 대상
 
@@ -299,13 +299,13 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 | +0x0E | **0x40E** | 0~3 | Odometer | FLOAT | m | 반올림 없음 | #13 ODO[0] (2026-07-13 PRIMARY 신규, 규정 10s와 병행) |
 | +0x0E | 0x40E | 4~7 | DC_Bus_AmpHours | FLOAT | Ah | 반올림 없음 | #13 ODO[1] |
 
-> ⚠️ 2026-07-13: 0x401 Limit/Error Flags는 PRIMARY(구 #14)에서 빠지고 아래 DETAIL KEY_MOTOR_STATUS로 통합됨. Motor PRIMARY는 이제 BUS_VEL/TEMP/BEMF/ODO 4패킷.
+> 2026-07-13: 0x401 Limit/Error Flags는 PRIMARY(구 #14)에서 빠지고 아래 DETAIL KEY_MOTOR_STATUS로 통합됨. Motor PRIMARY는 이제 BUS_VEL/TEMP/BEMF/ODO 4패킷.
 
 ### 4-2. 무선 DETAIL 1s
 
 | base+ | CAN ID | 오프셋 | 신호명 | 원본 타입 | 단위 | 저장 |
 |---|---|---|---|---|---|---|
-| +0x0C | **0x40C** | 0~3 | DSP_Board_Temp | FLOAT | ℃ | ×10 → i16 — KEY_MOTOR_DSP_TEMP ✅ (1패킷) |
+| +0x0C | **0x40C** | 0~3 | DSP_Board_Temp | FLOAT | ℃ | ×10 → i16 — KEY_MOTOR_DSP_TEMP (1패킷) |
 | +0x01 | **0x401** | 0~1 | Limit_Flags | u16 | 비트 | **sticky OR 누적** — KEY_MOTOR_STATUS[0] |
 | +0x01 | 0x401 | 2~3 | Error_Flags | u16 | 비트 | **sticky OR 누적** — KEY_MOTOR_STATUS[1] |
 | +0x01 | 0x401 | 4~5 | Active_Motor | u16 | — | 그대로 — KEY_MOTOR_STATUS[2] |
@@ -314,10 +314,10 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 | +0x04 | **0x404** | 0~3 | Phase B 전류 | FLOAT | Arms | ×10 → i16 — KEY_MOTOR_PHASE_I[0] (2026-07-13 SD_ONLY→DETAIL) |
 | +0x04 | 0x404 | 4~7 | Phase C 전류 | FLOAT | Arms | ×10 → i16 — KEY_MOTOR_PHASE_I[1] |
 
-> ✅ **2026-07-13**: 0x401 Status Information 전체(Limit/Error/Active_Motor/TX·RX ErrCnt)를 단일 KEY_MOTOR_STATUS(DETAIL) 패킷으로 통합. Phase 전류(0x404)는 SD_ONLY→DETAIL 승격.
-> ⚠️ 0x40E는 여기(구 DETAIL/규정)가 아니라 **PRIMARY(#13, §4-1)**로 이동함. 단, WSC 규정 제출용 10s 누적 패킷(SRC_SYS/KEY_REG_DATA)은 그대로 병행 유지.
+> **2026-07-13**: 0x401 Status Information 전체(Limit/Error/Active_Motor/TX·RX ErrCnt)를 단일 KEY_MOTOR_STATUS(DETAIL) 패킷으로 통합. Phase 전류(0x404)는 SD_ONLY→DETAIL 승격.
+> 0x40E는 여기(구 DETAIL/규정)가 아니라 **PRIMARY(#13, §4-1)**로 이동함. 단, WSC 규정 제출용 10s 누적 패킷(SRC_SYS/KEY_REG_DATA)은 그대로 병행 유지.
 
-### 4-3. SD_ONLY (무선 제외 — 진단/사후 분석) — ✅ 구현 완료·매뉴얼 대조 정정(2026-07, 🟠 잠정 스케일: 전압류 ×100, 전류류 ×10)
+### 4-3. SD_ONLY (무선 제외 — 진단/사후 분석) — 구현 완료·매뉴얼 대조 정정(2026-07, 잠정 스케일: 전압류 ×100, 전류류 ×10)
 
 | base+ | CAN ID | 오프셋 | 신호명 | 원본 단위 | 변환 규칙 | 무선 패킷(SD_Queue 전용) |
 |---|---|---|---|---|---|---|
@@ -330,8 +330,8 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 | +0x09 | 0x409 | 0~3 | 1.9V 레일 (DSP) | V | ×100 → u16 | KEY_MOTOR_RAILS[2] |
 | +0x17 | 0x417 | 4~7 | Slip Speed (**byte 0~3은 Reserved**) | Hz | ×10 → i16 | KEY_MOTOR_SLIP |
 
-> ⚠️ **2026-07-13 SD_ONLY 축소**: Phase 전류(0x404)는 DETAIL로, BackEMF(0x407)는 PRIMARY로 승격되어 이 표에서 빠짐. 현재 SD_ONLY는 V_VECTOR(0x405)/I_VECTOR(0x406)/RAILS(0x408·0x409)/SLIP(0x417) 4패킷.
-> ⚠️ **매뉴얼 대조로 밝혀진 구조 오류**: 0x408은 15V만 담고 있고(byte 0~3은 Reserved), 3.3V는 별도 프레임 0x409에 있음 — 이전엔 0x408 하나에서 15V+3.3V를 잘못 읽고 있었음. 0x417도 byte 0~3이 아니라 4~7에서 읽어야 함.
+> **2026-07-13 SD_ONLY 축소**: Phase 전류(0x404)는 DETAIL로, BackEMF(0x407)는 PRIMARY로 승격되어 이 표에서 빠짐. 현재 SD_ONLY는 V_VECTOR(0x405)/I_VECTOR(0x406)/RAILS(0x408·0x409)/SLIP(0x417) 4패킷.
+> **매뉴얼 대조로 밝혀진 구조 오류**: 0x408은 15V만 담고 있고(byte 0~3은 Reserved), 3.3V는 별도 프레임 0x409에 있음 — 이전엔 0x408 하나에서 15V+3.3V를 잘못 읽고 있었음. 0x417도 byte 0~3이 아니라 4~7에서 읽어야 함.
 > **참고**: 매뉴얼 원문 네이티브 송신 주기는 대부분 200ms(Phase Current/Vector/BackEMF/Slip)·1s(전원레일)이지만, 우리는 대역 절약을 위해 SD_ONLY(무선 미전송)로 분류함 — WaveSculptor 자체 배선 주기와 무관한 우리 팀의 대역폭 정책 결정.
 
 > **무선 미전송, SD_Queue만** — `Sched_EmitSdOnly()`가 `to_uart=0`으로 전송. 대역폭 계산에서 제외.
@@ -364,11 +364,11 @@ BMU는 **EV Driver Controls 스위치 상태(기본 0x505)**를 **>5 Hz**로 받
 | ID | 내용 | 무선 | 신선도 감시 |
 |---|---|---|---|
 | 0x601 / 0x602 / 0x603 | CMU0 상태 / Cell0~3 / Cell4~7 | SD 만 | — (CMU 이상은 BMU 가 0x6FB 로 알린다) |
-| 0x6F4 | SOC (Ah·% float32) | **PRIMARY** | ✅ |
-| 0x6F8 | 최소/최대 셀 전압 | **PRIMARY** | ✅ |
-| 0x6F9 | 최소/최대 셀 온도 | **PRIMARY** | ✅ |
-| 0x6FA | 팩 전압 / 전류 | **PRIMARY** | ✅ |
-| 0x6FB | 팩 상태 (플래그·CMU 수) | SD 만 | ✅ |
+| 0x6F4 | SOC (Ah·% float32) | **PRIMARY** | 확인 |
+| 0x6F8 | 최소/최대 셀 전압 | **PRIMARY** | 확인 |
+| 0x6F9 | 최소/최대 셀 온도 | **PRIMARY** | 확인 |
+| 0x6FA | 팩 전압 / 전류 | **PRIMARY** | 확인 |
+| 0x6FB | 팩 상태 (플래그·CMU 수) | SD 만 | 확인 |
 | 그 밖의 0x6F5~0x6FD | 밸런스 SOC·충전 제어·프리차지·팬·확장 상태 | SD 만 | — |
 
 ### 4.5-3. 무선·SD 패킷 (`SRC_BMS_LV` = 8)
@@ -392,15 +392,15 @@ HV 의 `KEY_BMS_STATUS` 같은 상태 패킷은 LV 로 보내지 않는다 — �
 ### 4.5-5. 더미 노드
 
 `tests/dummy_nodes/BMS_Dummy` 의 `send_bms_lv()` 가 위 ID 들을 Prohelion 형식으로 만든다(셀 3.0~3.5V, 팩 12~14V, 셀 4~7 은 -32768).
-⚠ 같은 더미의 HV 쪽(BOT/TOP)은 아직 **구 BQ 형식**이다 — 수신측 HV 가 2026-09 에 Prohelion 으로 바뀐 것이 더미에는 반영되지 않았다. LV 만 현행 형식이다.
+같은 더미의 HV 쪽(BOT/TOP)은 아직 **구 BQ 형식**이다 — 수신측 HV 가 2026-09 에 Prohelion 으로 바뀐 것이 더미에는 반영되지 않았다. LV 만 현행 형식이다.
 
 ## 4.6 온보드 ADC — J3 리니어 포텐셔미터 (2026-09-17, CAN 아님)
 
 > 센서: HGSI **LPPS-22** 리니어 포텐셔미터 ×2 (5kΩ, 비율 출력 0~100% × 구동 전압). **5V 구동**.
 > 배선: J3-1 AGND(센서 파랑), J3-2 AIN1(센서1 검정), J3-3 AIN2(센서2 검정). 센서 갈색(+V)은 J3에 핀이 없어 **보드 5V에서 별도 배선**.
-> 회로: AINx → 470Ω → PC2/PC3(ADC1_IN3/IN4) → 910Ω → AGND. 분압 0.659 → **입력 5.0V = ADC 3.3V**. ⚠ 12V 구동 금지(핀에 7.9V).
-> ⚠ **부하 오차**: 분압 합 1.38kΩ이 센서 5kΩ를 끌어내려 스트로크 중간에서 최대 약 48% 낮게 읽힌다(양 끝은 정확).
-> ⚠ **상단 포화 여유 3mV**: 5V 입력 → 핀 3.297V (VREF+ 3.3V). 저항·5V 레일 오차로 스트로크 끝이 쉽게 포화된다.
+> 회로: AINx → 470Ω → PC2/PC3(ADC1_IN3/IN4) → 910Ω → AGND. 분압 0.659 → **입력 5.0V = ADC 3.3V**. 12V 구동 금지(핀에 7.9V).
+> **부하 오차**: 분압 합 1.38kΩ이 센서 5kΩ를 끌어내려 스트로크 중간에서 최대 약 48% 낮게 읽힌다(양 끝은 정확).
+> **상단 포화 여유 3mV**: 5V 입력 → 핀 3.297V (VREF+ 3.3V). 저항·5V 레일 오차로 스트로크 끝이 쉽게 포화된다.
 > → 하드웨어 수정 권장: R24~R27을 47kΩ(직렬)/82kΩ(접지)로(5V → 3.18V), C49/C50에 100nF 실장 후 `adc_sensor.c` 분압 상수 수정.
 
 | 항목 | 값 |
@@ -438,12 +438,12 @@ HV 의 `KEY_BMS_STATUS` 같은 상태 패킷은 LV 로 보내지 않는다 — �
 | 6 | BMS 프리차지·컨택터 | 0x137 | 3s |
 | 7 | BMS Balance SOC·팬 | 0x135, 0x13C | 3s |
 | 8~11 | CMU 1~4 | 각 +1/+2/+3 세 프레임 | 3s |
-| 12~15 | MPPT 1~4 전력 | base+0, +1 | 3s ⚠ 임시(주기 실측 필요) |
-| 16~19 | MPPT 1~4 온도·상태 | base+2, +5 | 3s ⚠ 임시 |
-| 20 | 모터 버스·속도 | 0x402, 0x403 | 1s ⚠ 임시(VCU 확정 후) |
-| 21 | 모터 온도 | 0x40B, 0x40C | 3s ⚠ 임시 |
-| 22 | 모터 상태 | 0x401 | 1s ⚠ 임시 |
-| 23 | 주행거리 | 0x40E | 3s ⚠ 임시 |
+| 12~15 | MPPT 1~4 전력 | base+0, +1 | 3s 임시(주기 실측 필요) |
+| 16~19 | MPPT 1~4 온도·상태 | base+2, +5 | 3s 임시 |
+| 20 | 모터 버스·속도 | 0x402, 0x403 | 1s 임시(VCU 확정 후) |
+| 21 | 모터 온도 | 0x40B, 0x40C | 3s 임시 |
+| 22 | 모터 상태 | 0x401 | 1s 임시 |
+| 23 | 주행거리 | 0x40E | 3s 임시 |
 | 24~25 | ADC AIN1/AIN2 | 샘플 획득 성공 | 1s |
 | 26 | LV 팩 V/I | 0x6FA, 0x6F8 | 1s (§4.5, 2026-09-23) |
 | 27 | LV SOC·온도·상태 | 0x6F4, 0x6F9, 0x6FB | 3s |
@@ -481,24 +481,24 @@ HV 의 `KEY_BMS_STATUS` 같은 상태 패킷은 LV 로 보내지 않는다 — �
 | 7 | SRC_MPPT2 | IV_IN_OUT | (동일) | | | | 4×u16 |
 | 8 | SRC_MPPT3 | IV_IN_OUT | (동일) | | | | 4×u16 |
 | 9 | SRC_MPPT4 | IV_IN_OUT | (동일) | | | | 4×u16 |
-| 10 | SRC_MOTOR | BUS_VEL | BusV (×100) | BusI (×10) | MotorRPM | VehSpeed (×100) | u16,i16,i16,u16 🟠 |
-| 11 | SRC_MOTOR | TEMP | HeatsinkT (×10) | MotorT (×10) | pad | pad | i16,i16,-,- 🟠 |
-| 12 | SRC_MOTOR | BEMF | BEMFd (×100) | BEMFq (×100) | pad | pad | i16,i16,-,- 🟠 |
-| 13 | SRC_MOTOR | ODO | Odometer (m) | DC_Bus_AmpHours (Ah) | — | — | 2×float 🟠 |
+| 10 | SRC_MOTOR | BUS_VEL | BusV (×100) | BusI (×10) | MotorRPM | VehSpeed (×100) | u16,i16,i16,u16 (잠정) |
+| 11 | SRC_MOTOR | TEMP | HeatsinkT (×10) | MotorT (×10) | pad | pad | i16,i16,-,- (잠정) |
+| 12 | SRC_MOTOR | BEMF | BEMFd (×100) | BEMFq (×100) | pad | pad | i16,i16,-,- (잠정) |
+| 13 | SRC_MOTOR | ODO | Odometer (m) | DC_Bus_AmpHours (Ah) | — | — | 2×float (잠정) |
 
-> **🚨 2026-09-23 LV BMS 복원 — 지상국 디코더 필수 반영**: PRIMARY 11→**13패킷**. `SRC_BMS_LV`(8) 두 패킷이 #4/#5 에 들어가고 MPPT·Motor 가 두 칸씩 밀렸다.
+> **2026-09-23 LV BMS 복원 — 지상국 디코더 필수 반영**: PRIMARY 11→**13패킷**. `SRC_BMS_LV`(8) 두 패킷이 #4/#5 에 들어가고 MPPT·Motor 가 두 칸씩 밀렸다.
 > 패킷은 source·key 로 스스로를 밝히므로 **번호가 밀려도 디코딩은 깨지지 않는다** — 다만 source 8 을 모르는 디코더는 LV 패킷을 조용히 버린다.
 
-> 🟠 = 잠정값 (Motor: WaveSculptor22 기반, VCU 확정 시 교체).
+> 잠정 = 잠정값 (Motor: WaveSculptor22 기반, VCU 확정 시 교체).
 >
-> **🚨 2026-08 고장 플래그 sticky화 — 지상국 표시 문구 반영 필요 (값의 의미 변경)**:
+> **2026-08 고장 플래그 sticky화 — 지상국 표시 문구 반영 필요 (값의 의미 변경)**:
 > - 대상: **Motor `KEY_MOTOR_STATUS`의 Limit_Flags/Error_Flags**(0x401), **MPPT `KEY_MPPT_TEMP_FLAGS`의 Error_Flags**(0x315 byte3).
 > - 이 비트들의 의미가 "**전송 시점에 떠 있는 비트**"에서 "**직전 주기(5초) 동안 한 번이라도 떴던 비트의 합집합**"으로 바뀌었다. 펌웨어가 CAN RX마다 OR로 누적하고, 패킷에 실은 직후 클리어한다.
 > - **이유**: DETAIL 주기가 5초로 늦춰지면서, 잠깐 떴다 사라지는 고장 비트(전류 제한 진입, 일시적 오류 등)가 샘플링 전에 덮어써져 **한 번도 관측되지 않는** 문제가 있었다. BMS Fault와 달리 Motor/MPPT 플래그는 기기 측 래치가 보장되지 않는다.
 > - **지상국 조치**: "현재 제한 중"이 아니라 "최근 5초 내 발생"으로 표기할 것. 비트가 한 주기만 뜨고 다음 주기에 0으로 돌아오는 것은 **정상 동작**이며 통신 오류가 아니다.
 > - Active_Motor / TX·RX ErrCnt / MPPT Mode는 상태·카운터값이라 **종전대로 최신값 덮어쓰기**다.
 >
-> **🚨 2026-08 MPPT 4대 증설 — 지상국 디코더 필수 반영 (전송 포맷 변경)**:
+> **2026-08 MPPT 4대 증설 — 지상국 디코더 필수 반영 (전송 포맷 변경)**:
 > - PRIMARY에 **#10 SRC_MPPT4**(base 0x340) 신규 추가 → 이후 패킷 번호 전부 +1 시프트(Motor #10~#13→#11~#14, BMS_LV #14~#15→#15~#16, BMS SOC #16~#17→#17~#18). PRIMARY 총 17→**18패킷**.
 > - **LOG 패킷 `source` 바이트 값이 시프트됨** — `SRC_MPPT4`를 `SRC_MPPT3` 뒤(=6)에 삽입했기 때문:
 >   `SRC_MOTOR 6→7`, `SRC_BMS_LV 7→8`, `SRC_RESERVED1/2 8·9→9·10`, `SRC_CAN_ERR 10→11`, `SRC_SPI_ERR 11→12`, `SRC_UART_ERR 12→13`, `SRC_SD_ERR 13→14`.
@@ -509,12 +509,12 @@ HV 의 `KEY_BMS_STATUS` 같은 상태 패킷은 LV 로 보내지 않는다 — �
 > - 저전압 보조배터리 BMS(Prohelion D1000 Gen1, base 0x600)를 **차량 구성에서 제외**하기로 결정 → 수신·파싱·송출·필터를 전부 삭제했다.
 > - **FDCAN1 필터 1을 0x400~0x6FF → 0x400~0x4FF로 축소** (Motor 최대 ID 0x417). LV 대역이 하드웨어에서 차단된다.
 > - PRIMARY **18→16패킷**(LV SOC/PACK_VI 2개 제거, 이후 BMS SOC가 #15/#16으로 당겨짐), DETAIL **43→33**, SD_ONLY **50→48**.
-> - ⚠ `LOG_SOURCE`의 **값 8은 삭제하지 않고 `SRC_RESERVED3`로 남겼다.** 지우면 뒤따르는 `SRC_CAN_ERR`(11)~`SRC_SD_ERR`(14)가 전부 당겨져 지상국과 무성 불일치가 난다. 위 2026-08 MPPT4 이력의 시프트 표는 그대로 유효하다.
+> - `LOG_SOURCE`의 **값 8은 삭제하지 않고 `SRC_RESERVED3`로 남겼다.** 지우면 뒤따르는 `SRC_CAN_ERR`(11)~`SRC_SD_ERR`(14)가 전부 당겨져 지상국과 무성 불일치가 난다. 위 2026-08 MPPT4 이력의 시프트 표는 그대로 유효하다.
 > - FDCAN1 HW 필터0 상한 `0x33F → 0x34F`로 확장(0x340~0x346 수용). 필터 자체는 수신 보드 내부 설정이라 타 보드 영향 없음.
 >
-> **⚠️ 2026-07-24 BMS(HV) SOC PRIMARY 신규 추가 (구 #16/#17 → 현 #17/#18)** — 지상국 디코더 필수 반영: BMS(HV) CAN ID가 0x040~0x07F 대역으로 재배치되며 SOC(0x043 BOT/0x047 TOP)가 새 PRIMARY 항목으로 추가됨. §2 참고.
+> **2026-07-24 BMS(HV) SOC PRIMARY 신규 추가 (구 #16/#17 → 현 #17/#18)** — 지상국 디코더 필수 반영: BMS(HV) CAN ID가 0x040~0x07F 대역으로 재배치되며 SOC(0x043 BOT/0x047 TOP)가 새 PRIMARY 항목으로 추가됨. §2 참고.
 >
-> **⚠️ 2026-07-13 티어 재배치 (CAN_수신_데이터_정리본.xlsx 기준)** — 지상국 디코더 필수 반영:
+> **2026-07-13 티어 재배치 (CAN_수신_데이터_정리본.xlsx 기준)** — 지상국 디코더 필수 반영:
 > - MPPT TEMP_FLAGS(구 #8/#10/#12, MosfetT/CtrlT/Flags/Mode)는 **PRIMARY→DETAIL**로 이동 (아래 §"MPPT DETAIL" 참고). PRIMARY MPPT는 이제 IV_IN_OUT 1개/유닛만.
 > - Motor #14 TEMP_FLAGS는 해체: 온도는 **KEY_MOTOR_TEMP(#11, PRIMARY)**, Limit/Error Flags는 **KEY_MOTOR_STATUS(DETAIL)**로 분리.
 > - Motor 0x407 BEMF: **SD_ONLY→PRIMARY**(#12). Motor 0x40E ODO: 규정 10s에 더해 **PRIMARY(#13)** 신규.
@@ -536,26 +536,26 @@ HV 의 `KEY_BMS_STATUS` 같은 상태 패킷은 LV 로 보내지 않는다 — �
 | MPPT 전압 (V) | FLOAT | ×100 | u16 | 0.01V |
 | MPPT 전류 (A) | FLOAT | ×100 | u16 | 0.01A |
 | MPPT 온도 (℃) | FLOAT | ×10 | i16 | 0.1℃ |
-| 🟠 Motor Bus 전압 (V) | FLOAT | ×100 | u16 | 0.01V |
-| 🟠 Motor Bus 전류 (A) | FLOAT | ×10 | i16 (regen 음수) | 0.1A |
-| 🟠 Motor 속도 (rpm) | FLOAT | 반올림 | i16 (역방향 음수) | 1rpm |
-| 🟠 Vehicle 속도 (m/s) | FLOAT | ×100 | u16 | 0.01 m/s |
-| 🟠 Motor 온도 (℃) | FLOAT | ×10 | i16 | 0.1℃ |
-| 🟠 Motor Flags | u16 | 그대로 | u16 | 비트 |
+| (잠정) Motor Bus 전압 (V) | FLOAT | ×100 | u16 | 0.01V |
+| (잠정) Motor Bus 전류 (A) | FLOAT | ×10 | i16 (regen 음수) | 0.1A |
+| (잠정) Motor 속도 (rpm) | FLOAT | 반올림 | i16 (역방향 음수) | 1rpm |
+| (잠정) Vehicle 속도 (m/s) | FLOAT | ×100 | u16 | 0.01 m/s |
+| (잠정) Motor 온도 (℃) | FLOAT | ×10 | i16 | 0.1℃ |
+| (잠정) Motor Flags | u16 | 그대로 | u16 | 비트 |
 | MPPT aux 전압(12V/3V/MaxOut/PowerConn) | FLOAT | ×100(3V만 ×1000) | u16 | 0.01V(3V는 0.001V) |
 | MPPT aux 전류(MaxInput) | FLOAT | ×100 | u16 | 0.01A |
 | MPPT PowerConn 온도 | FLOAT | ×10 | i16 | 0.1℃ |
-| 🟠 Motor DSP온도 | FLOAT | ×10 | i16 | 0.1℃ |
-| 🟠 Motor SD_ONLY 전압류(V벡터/BackEMF/레일) | FLOAT | ×100 | i16/u16 | 0.01V |
-| 🟠 Motor SD_ONLY 전류류(Phase/I벡터)/Slip | FLOAT | ×10 | i16 | 0.1A / 0.1Hz |
+| (잠정) Motor DSP온도 | FLOAT | ×10 | i16 | 0.1℃ |
+| (잠정) Motor SD_ONLY 전압류(V벡터/BackEMF/레일) | FLOAT | ×100 | i16/u16 | 0.01V |
+| (잠정) Motor SD_ONLY 전류류(Phase/I벡터)/Slip | FLOAT | ×10 | i16 | 0.1A / 0.1Hz |
 | BMS 엔디안 | 리틀엔디안 (Prohelion, 2026-09) | 변환 불필요 | — | — |
-| MPPT / 🟠 Motor 엔디안 | 리틀엔디안(Intel) | 변환 불필요 | — | — |
+| MPPT / (잠정) Motor 엔디안 | 리틀엔디안(Intel) | 변환 불필요 | — | — |
 
 ---
 
 ## 7. VehicleData_t 구조 (CAN ID 대응 주석 포함)
 
-> ⚠ **정확한 선언의 정본은 `Core/Inc/types.h`**다. 이 절은 "어느 필드가 어느 CAN ID에서 오는가"를
+> **정확한 선언의 정본은 `Core/Inc/types.h`**다. 이 절은 "어느 필드가 어느 CAN ID에서 오는가"를
 > 한 눈에 보기 위한 것이며, types.h에는 없는 CAN ID 주석이 붙어 있는 게 존재 이유다.
 > **구조체를 수정하면 여기도 같이 고칠 것** — 2026-07-31 점검에서 `BmsLvData_t`가 통째로 누락되고
 > `VehicleData_t`의 규정 필드가 "미구현 주석"으로 남아 있는 드리프트가 발견되어 정정했다.
@@ -609,14 +609,14 @@ typedef struct {
     uint8_t  error_flags;
     uint8_t  mode;
 
-    /* ✅ 2026-07 추가 — +3/+4/+6 aux 신호 */
+    /* 2026-07 추가 — +3/+4/+6 aux 신호 */
     uint16_t aux_12v, aux_3v, max_out_v, max_in_i;
     uint16_t powerconn_v;   int16_t powerconn_temp;
 
     uint32_t mppt_last_tick;
 } MpptData_t;
 
-/* 🟠 virtual — WaveSculptor22 기반, VCU 확정 시 교체 */
+/* (잠정) virtual — WaveSculptor22 기반, VCU 확정 시 교체 */
 typedef struct {
     uint16_t bus_v;             /* Bus Voltage   (×100, 0.01V)        */
     int16_t  bus_i;             /* Bus Current   (×10, 0.1A, regen 음수)*/
@@ -627,11 +627,11 @@ typedef struct {
     uint16_t error_flags;       /* Status ErrorFlags (비트)            */
     uint16_t limit_flags;       /* Status LimitFlags (비트)            */
 
-    /* ✅ 2026-07 추가 — 0x401 Status Information 확장 필드 */
+    /* 2026-07 추가 — 0x401 Status Information 확장 필드 */
     uint8_t  can_rx_err_count, can_tx_err_count;
     uint16_t active_motor;
 
-    /* ✅ 2026-07 추가 — 0x40C DETAIL(무선) + 0x404~0x417 SD_ONLY(SD만, 🟠 잠정) */
+    /* 2026-07 추가 — 0x40C DETAIL(무선) + 0x404~0x417 SD_ONLY(SD만, 잠정) */
     int16_t  dsp_temp;
     int16_t  phase_b_i, phase_c_i;
     int16_t  v_vector_d, v_vector_q, i_vector_d, i_vector_q;
@@ -645,7 +645,7 @@ typedef struct {
 typedef struct {
     BmsData_t   bms;            /* HV BMS (Prohelion D1000 Gen1, 2026-09) */
     MpptData_t  mppt[MPPT_UNIT_COUNT];   /* MPPT_UNIT_COUNT=4 (2026-08 3→4 증설) */
-    MotorData_t motor;          /* 🟠 virtual — VCU 확정 시 교체 */
+    MotorData_t motor;          /* (잠정) virtual — VCU 확정 시 교체 */
 
     /* WSC 규정 누적 데이터 (RegData_t reg로 묶는 것은 예약 상태 — 현재는 평면 필드) */
     float    distance_traveled;          /* 이동 거리 (m, Motor 0x40E Odometer)        */
@@ -659,7 +659,7 @@ typedef struct {
 
 ## 8. 무선 전송 용량 요약
 
-> ✅ 2026-07-24: BMS(HV) SOC PRIMARY 편입(+2패킷) 반영해 재계산 (UART 115200 8N1 = 11.5 KB/s는 여유 충분하므로 병목은 RFD900x air rate).
+> 2026-07-24: BMS(HV) SOC PRIMARY 편입(+2패킷) 반영해 재계산 (UART 115200 8N1 = 11.5 KB/s는 여유 충분하므로 병목은 RFD900x air rate).
 
 | 항목 | 계산 | 수치 |
 |---|---|---|
@@ -674,7 +674,7 @@ typedef struct {
 **PRIMARY 11패킷**: BMS 3(PACK_VI/SOC_TEMP/STATUS) + MPPT IV ×4 + Motor(BUS_VEL/TEMP/BEMF/ODO) 4.
 **DETAIL 33패킷**: BMS 16(팩 CELL_LOC/SOC_DETAIL/CHARGER/FAN_12V 4 + CMU당 셀A/셀B/온도 3 ×4) + MPPT 12(TEMP_FLAGS/MAXLIM/AUX_2 ×4) + Motor 3(DSP_TEMP/STATUS/PHASE_I) + ADC 2(포텐셔미터 ×2, 2026-09-17).
 
-> **🕐 2026-08 감속 개정 (200ms/1s → 1s/5s)**: 신호의 실제 변화 시간상수 대비 기존 주기가 과했다.
+> **2026-08 감속 개정 (200ms/1s → 1s/5s)**: 신호의 실제 변화 시간상수 대비 기존 주기가 과했다.
 > - 모터 RPM·차속은 차체 관성(200~300kg, 순항 1~2kW) 때문에 **초 단위**로만 변하고, 버스 전류·셀전압 강하(V=I×R)는 스로틀/램프 속도인 **100ms~1s**, 가장 빠른 축인 MPPT 입력(구름 그림자가 어레이 통과)도 **약 170ms**다. 온도류는 수십 초~분. **5Hz가 필요한 신호는 없었다.**
 > - **누적 에너지(Odometer, DC_Bus_AmpHours, 쿨롱카운터, 규정 누적값)는 기기가 자체 적분해 보내므로 샘플링 주기와 무관하게 정확하다** — 순간값을 자주 뜰 이유가 없는 결정적 근거.
 > - Fault/Alarm은 BMS에서 래치되어 언제 폴링해도 유실되지 않는다.
@@ -720,7 +720,7 @@ typedef struct {
    주기가 되면서 CAN 두절 검출 지연이 최대 6초(임계값 1s + DETAIL 1주기 5s)로 늘어날 뻔했다.
    자체 1초 분주(`tick%10==5`)로 분리해 검출 지연을 종전(최대 ~2초)대로 유지한다.
 
-> ⚠ **부작용**: DETAIL 패킷이 한 주기(5초) 안에서 최대 4.5초 스태거된다. `LOG`마다 자체 `timestamp`가
+> **부작용**: DETAIL 패킷이 한 주기(5초) 안에서 최대 4.5초 스태거된다. `LOG`마다 자체 `timestamp`가
 > 있어 지상국 시계열 재구성에는 영향이 없다. 다만 "한 주기치 DETAIL = 동일 시점 스냅샷"을 전제하는
 > 디코더를 만들면 안 된다.
 >
@@ -734,20 +734,20 @@ typedef struct {
 
 | 항목 | 상태 |
 |---|---|
-| BMS 보드 FDCAN 비트타이밍 확인 (1.667Mbit/s 산출 경고) | ✅ 해결 — 타 팀과 500kbps 합의 완료(2026-07), 실측 권장 |
-| Motor: VCU CAN 출력 스펙 확정 | 🟠 잠정 (WaveSculptor22 virtual 사용 중) |
-| Motor: VCU 재전송 ID·엔디안 확인 (DBC) | ❌ 대기 |
-| Motor: 실제 VCU base 주소 (가정 0x400) | ❌ 대기 |
-| BMS 500kbps 보드 실측 | ❌ 대기 (합의는 완료, 실측만 남음) |
-| MPPT 로터리 1/2/3/**4** 현장 확인 (base 0x610→0x310 이전 + 2026-08 #4 증설 후 재확인 필요) | ❌ 대기 |
-| MCP2518FD 센서 RX 범위 (LCD TX 확정, 센서 RX 미확정) | ❌ 대기 |
-| SD 파일 포맷 결정 | ❌ 미결 |
-| KEY enum 슬롯 순서 문서화 | ⚠️ 2026-07-13 티어 재배치로 키 대량 변경 — 지상국 디코더 **재동기 필수** (§5 표 + 각 티어 표 참조) |
-| BMS 쿨롱카운터 물리 단위 환산 (현재 raw) | ❌ 대기 (BQ76972 데이터시트 스케일 확인) |
-| ✅ BMS 셀 전압(0x048~04B BOT/0x051~054 TOP 등)·CUV/COV 스냅샷·CB 밸런싱 비트맵·Safety/PF 상세 | 파싱+송출 구현 완료 (2026-07, xlsx 정밀 오프셋 확인, 2026-07-24 PR#31로 ID 이동) |
-| Safety/PF 상태 바이트 비트 정의 해석(대시보드/지상국 표시용) | ❌ 대기 (xlsx 비트맵 시트는 확보, 코드 반영은 별도) |
-| ✅ BMS 상세온도·쿨롱카운터 (xlsx 기준) | 파싱+송출 구현 완료 (2026-07) |
-| ✅ MPPT aux(+3/+4/+6) | 파싱+송출 구현 완료 (2026-07) |
-| ✅ Motor DSP온도(DETAIL)·SD_ONLY 진단 | 파싱+송출 구현 완료 (2026-07, 🟠 잠정 스케일) |
-| ✅ 2026-07-13 티어 재배치(CAN_수신_데이터_정리본.xlsx 기준) | MPPT/Motor PRIMARY/DETAIL/SD_ONLY 재분류 구현 완료 (§5·§3·§4) |
-| **BMS(HV) CAN ID 전면 재배치 (0x500대/0x1xx/0x2xx → 0x040~0x07F, PR#31)** | ⚠️ 코드 반영 완료, **실물 HV BMS 보드가 새 펌웨어(PR#31)로 재플래시됐는지 배포 전 확인 필요** (미완 시 옛 ID로 송신 중이라 프레임이 전혀 안 들어올 수 있음) |
+| BMS 보드 FDCAN 비트타이밍 확인 (1.667Mbit/s 산출 경고) | 해결 — 타 팀과 500kbps 합의 완료(2026-07), 실측 권장 |
+| Motor: VCU CAN 출력 스펙 확정 | 잠정 (WaveSculptor22 virtual 사용 중) |
+| Motor: VCU 재전송 ID·엔디안 확인 (DBC) | 대기 |
+| Motor: 실제 VCU base 주소 (가정 0x400) | 대기 |
+| BMS 500kbps 보드 실측 | 대기 (합의는 완료, 실측만 남음) |
+| MPPT 로터리 1/2/3/**4** 현장 확인 (base 0x610→0x310 이전 + 2026-08 #4 증설 후 재확인 필요) | 대기 |
+| MCP2518FD 센서 RX 범위 (LCD TX 확정, 센서 RX 미확정) | 대기 |
+| SD 파일 포맷 결정 | 미결 |
+| KEY enum 슬롯 순서 문서화 | 2026-07-13 티어 재배치로 키 대량 변경 — 지상국 디코더 **재동기 필수** (§5 표 + 각 티어 표 참조) |
+| BMS 쿨롱카운터 물리 단위 환산 (현재 raw) | 대기 (BQ76972 데이터시트 스케일 확인) |
+| BMS 셀 전압(0x048~04B BOT/0x051~054 TOP 등)·CUV/COV 스냅샷·CB 밸런싱 비트맵·Safety/PF 상세 | 파싱+송출 구현 완료 (2026-07, xlsx 정밀 오프셋 확인, 2026-07-24 PR#31로 ID 이동) |
+| Safety/PF 상태 바이트 비트 정의 해석(대시보드/지상국 표시용) | 대기 (xlsx 비트맵 시트는 확보, 코드 반영은 별도) |
+| BMS 상세온도·쿨롱카운터 (xlsx 기준) | 파싱+송출 구현 완료 (2026-07) |
+| MPPT aux(+3/+4/+6) | 파싱+송출 구현 완료 (2026-07) |
+| Motor DSP온도(DETAIL)·SD_ONLY 진단 | 파싱+송출 구현 완료 (2026-07, 잠정 스케일) |
+| 2026-07-13 티어 재배치(CAN_수신_데이터_정리본.xlsx 기준) | MPPT/Motor PRIMARY/DETAIL/SD_ONLY 재분류 구현 완료 (§5·§3·§4) |
+| **BMS(HV) CAN ID 전면 재배치 (0x500대/0x1xx/0x2xx → 0x040~0x07F, PR#31)** | 코드 반영 완료, **실물 HV BMS 보드가 새 펌웨어(PR#31)로 재플래시됐는지 배포 전 확인 필요** (미완 시 옛 ID로 송신 중이라 프레임이 전혀 안 들어올 수 있음) |

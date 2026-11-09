@@ -134,7 +134,7 @@ sequenceDiagram
 - uart_tx_complete_sem / mcp_rx_semaphore / mcp_spi_mutex: 각 ~80~100B
 - **합계**: ~5.4KB / 16KB (여유 ~10.6KB)
 
-> ⚠ **정정 (2026-07-31 2차 점검)**: 이전 판에는 UART_Queue/SD_Queue 스토리지가 이 목록에 들어
+> **정정 (2026-07-31 2차 점검)**: 이전 판에는 UART_Queue/SD_Queue 스토리지가 이 목록에 들어
 > 있었으나 **사실이 아니다**. 두 큐의 스토리지는 `app_threadx.c`의 `static ULONG uart_queue_storage[]`
 > / `sd_queue_storage[]`, 즉 **BSS 정적 배열**이며 byte pool을 쓰지 않는다(`tx_queue_create`에
 > 그 주소를 넘길 뿐이다). 마찬가지로 `fx_sd_media_memory`(512B)·`fx_fault_tolerant_buffer`(4096B)도
@@ -236,7 +236,7 @@ bool PacketBuilder_VerifyChecksum(const LOG *pkt);
 void PacketBuilder_PackFloat2(uint8_t *value_field, float f1, float f2);
 void PacketBuilder_UnpackFloat2(const uint8_t *value_field, float *f1, float *f2);
 
-/* ✅ 신규 (2025-06): 정수 패킹 헬퍼 (all-int 텔레메트리 전략) */
+/* 신규 (2025-06): 정수 패킹 헬퍼 (all-int 텔레메트리 전략) */
 void PacketBuilder_PackU16x4(uint8_t *value_field, uint16_t v0, uint16_t v1, uint16_t v2, uint16_t v3);
 void PacketBuilder_PackI16x4(uint8_t *value_field, int16_t  v0, int16_t  v1, int16_t  v2, int16_t  v3);
 void PacketBuilder_PackU32x2(uint8_t *value_field, uint32_t v0, uint32_t v1);
@@ -574,7 +574,7 @@ HAL_StatusTypeDef ExtCAN_Transmit(const uint8_t *data, size_t len);
 
 > **CAN TX 설계 (요구사항 13)**: ExtCAN_Init()에서 RX FIFO(FIFO1) 외에 TX FIFO(FIFO2)도 설정한다. `ExtCAN_Transmit()`은 /MCP251XFD_TransmitMessageToFIFO()/를 호출하여 FIFO2를 통해 CAN 메시지를 전송한다. TX 실패 시 ERR_CAN_TX_FAIL LOG를 생성한다. 지상국 메시지가 8바이트를 초과하면 복수 CAN 프레임으로 분할 전송한다.
 
-> ⚠️ **SPI1 동시성 (RX 드레인 ↔ CAN TX) — 구현 시 필수**: `ExtCAN_Transmit()`이 추가되면 SPI1을 **두 스레드가 공유**한다. `UART_RX_Thread`(pri 7)가 TX를, `MCP_RX_Thread`(pri 6)가 RX 드레인을 수행하는데, pri 6 > pri 7이라 TX 트랜잭션(NSS Low) 중 RX 스레드가 **선점하여 같은 NSS/SPI에 끼어들면 트랜잭션이 깨진다**. **결정: MCP SPI 접근은 `TX_MUTEX`(예: `mcp_spi_mutex`)로 보호한다.** 단, NSS 한 사이클이 아니라 **상위 드라이버 호출 단위**(`MCP251XFD_ReceiveMessageFromFIFO`/`TransmitMessageToFIFO` 등 — 논리적 op = 복수 SPI 사이클)를 감싸야 한다. 즉 `ExtCAN_DrainRxFIFO()`의 수신 op와 `ExtCAN_Transmit()`의 송신 op 각각을 mutex get/put으로 직렬화한다. (대안: 모든 SPI 접근을 `MCP_RX_Thread` 단일 소유로 두고 TX 요청을 큐로 전달 — 더 깔끔하나 스레드 구조 변경 필요. 현 텔레메트리 보드는 TX가 드물어 mutex로 충분.) → task 6A.2에서 구현.
+> **SPI1 동시성 (RX 드레인 ↔ CAN TX) — 구현 시 필수**: `ExtCAN_Transmit()`이 추가되면 SPI1을 **두 스레드가 공유**한다. `UART_RX_Thread`(pri 7)가 TX를, `MCP_RX_Thread`(pri 6)가 RX 드레인을 수행하는데, pri 6 > pri 7이라 TX 트랜잭션(NSS Low) 중 RX 스레드가 **선점하여 같은 NSS/SPI에 끼어들면 트랜잭션이 깨진다**. **결정: MCP SPI 접근은 `TX_MUTEX`(예: `mcp_spi_mutex`)로 보호한다.** 단, NSS 한 사이클이 아니라 **상위 드라이버 호출 단위**(`MCP251XFD_ReceiveMessageFromFIFO`/`TransmitMessageToFIFO` 등 — 논리적 op = 복수 SPI 사이클)를 감싸야 한다. 즉 `ExtCAN_DrainRxFIFO()`의 수신 op와 `ExtCAN_Transmit()`의 송신 op 각각을 mutex get/put으로 직렬화한다. (대안: 모든 SPI 접근을 `MCP_RX_Thread` 단일 소유로 두고 TX 요청을 큐로 전달 — 더 깔끔하나 스레드 구조 변경 필요. 현 텔레메트리 보드는 TX가 드물어 mutex로 충분.) → task 6A.2에서 구현.
 
 ```mermaid
 sequenceDiagram
@@ -664,7 +664,7 @@ Timer_Scheduler_Tick() 내부에서 소프트웨어 카운터로 10초(100회) �
   - RTC 시각 읽기 → RTC_TIME LOG 패킷 생성
   - (2026-08 삭제) 이전에는 여기서 **WSC 규정용 패킷**(key=KEY_REG_DATA)을 함께 만들었다. 규정에서 10초 주기 기록 조항이 없어져 제거했다 — 담고 있던 이동 거리·배터리 누적은 PRIMARY의 KEY_MOTOR_ODO로 이미 나가고, 태양광 누적은 대입 코드가 없어 항상 0이었다.
 
-#### 텔레메트리 스케줄링 (멀티레이트) — ✅ 주기 그룹 확정 (BMS·MPPT), 🟠 Motor 잠정(virtual)
+#### 텔레메트리 스케줄링 (멀티레이트) — 주기 그룹 확정 (BMS·MPPT), Motor 잠정(virtual)
 
 > **단일 진실 공급원**: 신호별 전송 주기`key`인코딩은 [can-signal-summary.md](can-signal-summary.md)가 SSOT. 스케줄링 설계 원칙(왜 이런 그룹으로 나눴는가)은 [telemetry-signals.md](telemetry-signals.md) §2 참조.
 
@@ -674,7 +674,7 @@ Timer_Scheduler_Tick() 내부에서 소프트웨어 카운터로 10초(100회) �
 |---|---|---|---|
 | **PRIMARY** | **1s (1Hz)** | 10틱마다 (`tick%10==0`) | BMS(HV) 전압·전류·Fault·온도·SOC, MPPT **V/I만**(×4), Motor Bus/속도·온도·BEMF·Odo — 총 16패킷 *(2026-08 LV BMS 제거)* |
 | **DETAIL** | **5s (0.2Hz)** | 5틱마다 1그룹씩 (`tick%5==2`, 10그룹) | 셀 전압 32개, 쿨롱 카운터, 상세 온도, MPPT **온도/flags·한계·커넥터**(×4), Motor DSP온도·Status(0x401)·Phase전류 — 총 33패킷 *(2026-08 LV BMS 제거)* |
-| **SD_ONLY** | — | (무선 TX 없음) | CUV/COV Snapshot ✅, CB_Status1/2/3 ✅, Safety/PF 상세 ✅, BMS FET(LEGACY) ✅, MPPT 12V/3V Aux ✅, 🟠 Motor Vector/레일/Slip ✅ |
+| **SD_ONLY** | — | (무선 TX 없음) | CUV/COV Snapshot, CB_Status1/2/3, Safety/PF 상세, BMS FET(LEGACY), MPPT 12V/3V Aux, (잠정) Motor Vector/레일/Slip |
 
 ```
 Timer_Scheduler_Tick (100ms 기본) — 작업별 분주 + 위상 분리 (2026-08 감속 개정):
@@ -688,7 +688,7 @@ Timer_Scheduler_Tick (100ms 기본) — 작업별 분주 + 위상 분리 (2026-0
     (0=PRIMARY, 2·7=DETAIL, 5=타임아웃, 4=RTC, 3=IWDG) → ISR 피크 = 16패킷
 ```
 
-> **✅ 부하 문제 해소 (2026-07)**: 위 "부하 주의"는 실제로 현실화되어 있었다. 개정 전에는
+> **부하 문제 해소 (2026-07)**: 위 "부하 주의"는 실제로 현실화되어 있었다. 개정 전에는
 > `tick % 10 == 0`인 틱에서 PRIMARY(17) + DETAIL(89 = EmitBoth 40 + EmitSdOnly 49)이 **한 ISR에
 > 몰려** UART 57건 / SD 106건이 깊이 20/50 큐에 밀려들었고, 소비 스레드(pri 5/10)는 ISR 중
 > 드레인이 불가능하므로 **UART 65% / SD 53%가 매초 드롭**되는 상태였다(래치 때문에 경고는
@@ -710,7 +710,7 @@ Timer_Scheduler_Tick (100ms 기본) — 작업별 분주 + 위상 분리 (2026-0
 > 잔여류 점유) 어떤 틱도 두 작업을 겹치지 않게 되었고, **피크가 30 → 18**(PRIMARY 단독)로 떨어져
 > UART 깊이 40 대비 여유가 **2.2×** 가 되었다. 이제 MPPT를 더 늘려도 DETAIL이 아니라 PRIMARY가
 > 유닛당 +1로 자라므로 한계까지 22패킷 여유가 있다.
-> ⚠ 타임아웃 검사는 DETAIL 스텝에서 분리해 자체 1초 분주로 옮겼다 — DETAIL이 5초 주기가 되면서
+> 타임아웃 검사는 DETAIL 스텝에서 분리해 자체 1초 분주로 옮겼다 — DETAIL이 5초 주기가 되면서
 > 그대로 두면 CAN 두절 검출 지연이 최대 6초로 늘어나기 때문이다.
 > 상세 위상 배치표와 스텝 분배는 `timer_scheduler.c`의 주기 상수 주석 및 `Sched_EmitDetailStep()` 주석 참조.
 >
@@ -719,7 +719,7 @@ Timer_Scheduler_Tick (100ms 기본) — 작업별 분주 + 위상 분리 (2026-0
 > 서로 선점하지 못하므로, TIM5 ISR이 길수록 CAN 수신이 그대로 밀린다. `crc8()`을 테이블 룩업으로
 > 바꿔(120 iter → 15 iter) 패킷당 비용도 약 8배 줄였다.
 >
-> ⚠ 부작용 1건: DETAIL 패킷이 1초 안에서 최대 900ms 스태거된다. `LOG`마다 자체 `timestamp`가
+> 부작용 1건: DETAIL 패킷이 1초 안에서 최대 900ms 스태거된다. `LOG`마다 자체 `timestamp`가
 > 있어 지상국 시계열에는 영향이 없으나, "1초치 DETAIL = 동일 시점 스냅샷"을 가정하는 소비자를
 > 만들면 안 된다.
 
@@ -823,7 +823,7 @@ memcpy(msg, &log_packet, sizeof(LOG));  // 16B 복사, 패딩 없음
 tx_queue_send(&UART_Queue, msg, TX_NO_WAIT);
 ```
 
-> ⚠ **중간 복사를 제거하지 말 것** (2026-07-31 3차 점검에서 명시): 크기가 같아졌으니
+> **중간 복사를 제거하지 말 것** (2026-07-31 3차 점검에서 명시): 크기가 같아졌으니
 > `tx_queue_send(&q, &log_packet, ...)`로 LOG 포인터를 직접 넘기면 복사 1회를 아낄 수 있을 것처럼
 > 보이지만 **안 된다**. `LOG`는 `__attribute__((packed))`이라 정렬 요구치가 **1바이트**인데,
 > ThreadX의 `TX_QUEUE_MESSAGE_COPY`는 `ULONG`(32비트) 단위로 복사한다. 홀수 주소에 놓인 `LOG`를

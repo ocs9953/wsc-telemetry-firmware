@@ -43,7 +43,7 @@
    - FileX 미디어 초기화
 3. WHEN 초기화가 완료되면, THE Telemetry_Firmware SHALL LED_BOARD_CHECK(PE12)를 요구사항 12.2의 실시간 건강 상태 규칙에 따라 갱신한다. **(2026-08 정정: 상시 점등에서 실시간 반영으로 변경 — 상세는 12.2)**
 4. IF 특정 주변장치 초기화가 실패하면, THEN THE Telemetry_Firmware SHALL LED_ERR(PE11)를 점등하고 오류 LOG 패킷(level=ERROR, source=SYS, key=ERR_INIT_FAIL, value=HAL 에러 코드)을 생성하여 UART_Queue와 SD_Queue에 전송한다.
-5. WHEN FDCAN1 초기화가 완료되면, THE CAN_Receiver SHALL **범위 필터 2개(StdFiltersNbr=2)**를 설정하여 BMS(HV)+MPPT(0x040~0x34F)와 Motor/VCU(**0x400~0x4FF**, 🟠 잠정 / 2026-08 LV BMS 제거로 0x6FF→0x4FF 축소)를 수신하도록 구성한다. (2026-07-24 BMS(HV) CAN ID가 우선순위 대역 0x040~0x07F로 재배치되며 MPPT와 함께 필터0에, Motor는 필터1에 커버. **2026-08 MPPT 4대 증설로 필터0 상한을 0x33F→0x34F로 확장** — MPPT 대역 0x310~0x346) [^1]
+5. WHEN FDCAN1 초기화가 완료되면, THE CAN_Receiver SHALL **범위 필터 2개(StdFiltersNbr=2)**를 설정하여 BMS(HV)+MPPT(0x040~0x34F)와 Motor/VCU(**0x400~0x4FF**, 잠정 / 2026-08 LV BMS 제거로 0x6FF→0x4FF 축소)를 수신하도록 구성한다. (2026-07-24 BMS(HV) CAN ID가 우선순위 대역 0x040~0x07F로 재배치되며 MPPT와 함께 필터0에, Motor는 필터1에 커버. **2026-08 MPPT 4대 증설로 필터0 상한을 0x33F→0x34F로 확장** — MPPT 대역 0x310~0x346) [^1]
 6. WHEN SPI1 초기화가 완료되면, THE ExtCAN_Controller SHALL MCP2518FD와 10MHz SPI Mode 0 통신을 설정하고 Software GPIO NSS 제어를 활성화한다.
 
 ### 요구사항 2: 전역 데이터 구조체 관리
@@ -94,12 +94,12 @@
 2. THE Packet_Builder SHALL timestamp 필드에 HAL_GetTick()으로 얻은 시스템 시간(밀리초)을 기록한다.
 3. THE Packet_Builder SHALL checksum 필드에 패킷의 나머지 15바이트에 대한 CRC-8(다항식 0x07, CRC-8/SMBus) 연산 결과를 기록한다.
 4. THE Packet_Builder SHALL value 필드(8바이트) 패킹을 지원한다: `PackU16x4`(4×u16), `PackI16x4`(4×i16), `PackU32x2`(2×u32). 기존 `PackFloat2/UnpackFloat2`는 Motor Odometer 등 float 원본 데이터 전용으로만 유지한다.
-5. THE Packet_Builder SHALL source 필드를 **단일 통합 LOG_SOURCE enum**(✅ 2025-06)으로 정의한다 [^2]:
+5. THE Packet_Builder SHALL source 필드를 **단일 통합 LOG_SOURCE enum**(2025-06)으로 정의한다 [^2]:
    - **데이터 소스** (INFO 데이터 패킷에 사용, 소스별 128-key 네임스페이스):
      - SRC_SYS: 시스템 전반 (RTC, 초기화, Watchdog 등)
      - SRC_BMS_BOT / SRC_BMS_TOP: BMS 하부/상부 보드 데이터
      - SRC_MPPT1 / SRC_MPPT2 / SRC_MPPT3 / SRC_MPPT4: MPPT 유닛 데이터 (2026-08 4대 증설, SRC_MPPT4는 SRC_MPPT3 뒤에 삽입되어 이후 소스 값이 +1 시프트됨 — 지상국 디코더 동시 갱신 필요)
-     - SRC_MOTOR: 모터/VCU 데이터 (🟠 잠정 — WaveSculptor22 기반 virtual, VCU 확정 대기)
+     - SRC_MOTOR: 모터/VCU 데이터 (잠정 — WaveSculptor22 기반 virtual, VCU 확정 대기)
      - SRC_RESERVED1 / SRC_RESERVED2: 향후 데이터 소스 (예: ADC 센서)
    - **에러 소스** (WARNING/ERROR/CRITICAL 패킷에 사용):
      - SRC_CAN_ERR: FDCAN1/MCP2518FD CAN 버스 오류
@@ -159,7 +159,7 @@
 5. IF SD_Queue tx_queue_send가 실패하면(큐 Full), THEN THE Timer_Scheduler SHALL 경고 LOG 패킷(level=WARNING, source=SD, key=ERR_SD_QUEUE_FULL, value=현재 큐 사용량(4B)+드롭된 패킷 수(4B))을 UART_Queue에만 전송하고 LED_SD(PD8)를 점등한다.
 6. WHEN TIM5 tick이 1초 주기에 도달하면(10틱마다 1회, `tick%10==5`), THE Timer_Scheduler SHALL 각 핵심 데이터 필드의 마지막 갱신 시각을 검사한다.
    - 임계값이 1000ms이므로 100ms마다 검사할 실익이 없어 1초 주기로 둔다. 대신 검출 지연이 최대 ~2초(임계값의 2배)가 될 수 있음을 감수한 결정이다.
-   - **⚠ 이 검사는 DETAIL 발행 주기와 독립이어야 한다.** 2026-08 감속 개정 전에는 DETAIL 스텝 5에 얹혀 있었는데, DETAIL이 5초 주기가 되면서 그대로 두면 검출 지연이 최대 6초(임계값 1s + DETAIL 1주기 5s)로 늘어나므로 자체 1초 분주로 분리했다.
+   - **이 검사는 DETAIL 발행 주기와 독립이어야 한다.** 2026-08 감속 개정 전에는 DETAIL 스텝 5에 얹혀 있었는데, DETAIL이 5초 주기가 되면서 그대로 두면 검출 지연이 최대 6초(임계값 1s + DETAIL 1주기 5s)로 늘어나므로 자체 1초 분주로 분리했다.
    - (2026-07-31 정정: 기존 문구는 "WHEN TIM5 인터럽트가 발생하면"이라 매 100ms 검사를 요구했으나, 구현은 처음부터 1초 주기였다 — 실제 설계 의도에 맞춰 문구를 정정.)
 7. IF 핵심 데이터가 1초(1000ms) 이상 갱신되지 않았다면, THEN THE Timer_Scheduler SHALL 경고 LOG 패킷(level=WARNING, source=SYS, key=ERR_TIMEOUT, value=타임아웃 발생 데이터 key(4B)+마지막 갱신 이후 경과 ms(4B))을 생성하여 UART_Queue와 SD_Queue에 전송한다.
 8. THE Timer_Scheduler SHALL 인터럽트 핸들러 내에서 지연(Delay) 연산을 수행하지 않고 tx_queue_send() 후 즉시 반환한다.
@@ -280,8 +280,8 @@
 
 ---
 
-[^1]: **✅ 해결됨 — CAN ID 목록 확정 (2026-07-24 PR#31 기준)**: BMS(HV) PRIMARY BOT(0x040~0x043)/TOP(0x044~0x047), BMS(HV) DETAIL BOT(0x048~0x050)/TOP(0x051~0x059), BMS(HV) SD_ONLY BOT(0x05A~0x06C)/TOP(0x06D~0x07F), BMS(HV) LEGACY(0x111~0x133/0x211~0x233, FET 0x123/0x223만 파싱), MPPT#1(0x310~0x316), MPPT#2(0x320~0x326), MPPT#3(0x330~0x336), BMS(LV, Prohelion)는 base 0x600(변경 없음). Motor/VCU는 🟠 잠정(0x400~0x4FF, WaveSculptor22 기반 virtual — VCU 출력 표 확정 시 교체). 전체 신호 표·VehicleData 매핑은 `can-signal-summary.md`(SSOT) 참조 — 설계 원칙은 `telemetry-signals.md`.
+[^1]: **해결됨 — CAN ID 목록 확정 (2026-07-24 PR#31 기준)**: BMS(HV) PRIMARY BOT(0x040~0x043)/TOP(0x044~0x047), BMS(HV) DETAIL BOT(0x048~0x050)/TOP(0x051~0x059), BMS(HV) SD_ONLY BOT(0x05A~0x06C)/TOP(0x06D~0x07F), BMS(HV) LEGACY(0x111~0x133/0x211~0x233, FET 0x123/0x223만 파싱), MPPT#1(0x310~0x316), MPPT#2(0x320~0x326), MPPT#3(0x330~0x336), BMS(LV, Prohelion)는 base 0x600(변경 없음). Motor/VCU는 잠정(0x400~0x4FF, WaveSculptor22 기반 virtual — VCU 출력 표 확정 시 교체). 전체 신호 표·VehicleData 매핑은 `can-signal-summary.md`(SSOT) 참조 — 설계 원칙은 `telemetry-signals.md`.
 
-[^2]: **✅ 해결됨 — FDCAN1/MCP2518FD 역할**: FDCAN1 = 차량 센서 전체 RX(BMS·MPPT·Motor), 범위 필터 2개(0x040~0x34F, 0x400~0x6FF). MCP2518FD = **향후 저우선순위 주변장치용 버스로 예약**(현재 확정 용도: 지상국→LCD 메시지 TX). LCD 외 일부 센서 RX 가능성 있으나 **미확정** → 확정 시 추가. 소스 구분: 데이터 패킷은 소스별 LOG_SOURCE(SRC_BMS_BOT 등), 에러 패킷은 SRC_CAN_ERR/SRC_SPI_ERR 등.
+[^2]: **해결됨 — FDCAN1/MCP2518FD 역할**: FDCAN1 = 차량 센서 전체 RX(BMS·MPPT·Motor), 범위 필터 2개(0x040~0x34F, 0x400~0x6FF). MCP2518FD = **향후 저우선순위 주변장치용 버스로 예약**(현재 확정 용도: 지상국→LCD 메시지 TX). LCD 외 일부 센서 RX 가능성 있으나 **미확정** → 확정 시 추가. 소스 구분: 데이터 패킷은 소스별 LOG_SOURCE(SRC_BMS_BOT 등), 에러 패킷은 SRC_CAN_ERR/SRC_SPI_ERR 등.
 
 [^3]: **[미정] LCD 보드용 CAN ID**: LCD 보드가 수신할 CAN ID가 아직 확정되지 않았다. 확정되면 ExtCAN_Transmit()의 CAN ID 설정을 업데이트해야 한다. 지상국 → 차량 메시지 프로토콜(COBS 프레임 + 타입 헤더)은 확정됨: 0x01=CAN 데이터, 0x02=텍스트 메시지.
