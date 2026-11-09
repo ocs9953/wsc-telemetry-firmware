@@ -1,0 +1,22 @@
+:name: WSC_Debug_Simulation
+:description: Debugging Mode (Function Trace)
+
+logLevel 3
+
+mach create
+machine LoadPlatformDescription @$ORIGIN/wsc.repl
+
+# 펌웨어 로드 (경로 확인!)
+sysbus LoadELF @$ORIGIN/Debug/WSC_V1.elf
+
+# UART 창 띄우기
+showAnalyzer sysbus.usart1
+
+# [핵심] CPU가 실행하는 함수 이름을 로그창에 찍어라!
+cpu LogFunctionNames true
+
+# [핵심] 만약 멈춰있으면 강제로 벡터 테이블 설정
+cpu VectorTableOffset 0x08000000
+
+# 시뮬레이션 시작
+start

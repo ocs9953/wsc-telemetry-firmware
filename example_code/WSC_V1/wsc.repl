@@ -1,0 +1,58 @@
+// STM32U575 Reference Platform (Fixed Booting)
+
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m33"
+    nvic: nvic
+
+// [핵심 수정] Flash 메모리를 0번지(부팅용)와 0x08000000(실제주소) 두 곳에 연결
+flash: Memory.MappedMemory @ { sysbus 0x08000000; sysbus 0x00000000 }
+    size: 0x200000
+
+// SRAM 메모리들
+sram1: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x30000
+sram2: Memory.MappedMemory @ sysbus 0x20030000
+    size: 0x10000
+sram3: Memory.MappedMemory @ sysbus 0x20040000
+    size: 0x80000
+
+// 인터럽트 컨트롤러
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    priorityMask: 0xF0
+
+// UART1 (LoRa 통신용)
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x400>
+    frequency: 16000000
+    -> nvic @ 37
+
+// 더미 장치 (SD카드 충돌 방지)
+sdmmc1: Python.PythonPeripheral @ sysbus <0x420C0000, +0x400>
+    size: 0x400
+    initable: true
+    script: "if request.isRead: request.value = 0"
+
+// 더미 장치 (CAN 충돌 방지)
+fdcan1: Python.PythonPeripheral @ sysbus <0x40006400, +0x400>
+    size: 0x400
+    initable: true
+    script: "if request.isRead: request.value = 0"
+
+// GPIO E (로그 출력용 - 말 많은 버전)
+gpioPortE: Python.PythonPeripheral @ sysbus <0x42021000, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.isWrite and request.offset == 0x14:
+    if (request.value & (1 << 2)):
+        self.Log(LogLevel.Error, "🚨 [HARDWARE] RED LED (Error) ON!")
+    if (request.value & (1 << 6)):
+        self.Log(LogLevel.Info, "🟢 [HARDWARE] GREEN LED (LoRa) ON!")
+    if (request.value & (1 << 5)):
+        self.Log(LogLevel.Info, "🔵 [HARDWARE] BLUE LED (CAN) ON!")
+'''
+
+// RCC (클럭)
+rcc: Python.PythonPeripheral @ sysbus <0x46020C00, +0x400>
+    size: 0x400
+    initable: true
+    script: "request.value = 0xFFFFFFFF"

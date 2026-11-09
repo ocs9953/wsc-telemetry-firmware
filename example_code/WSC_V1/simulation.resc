@@ -1,0 +1,25 @@
+:name: WSC_STM32U5_Simulation
+:description: WSC Project Firmware Simulation (External Script)
+
+logLevel 3
+
+# 1. 기계 생성
+mach create
+
+# 2. 하드웨어 플랫폼 로드
+machine LoadPlatformDescription @$ORIGIN/wsc.repl
+
+# 3. 펌웨어 로드
+sysbus LoadELF @$ORIGIN/Debug/WSC_V1.elf
+
+# 4. 분석기 창 띄우기
+showAnalyzer sysbus.usart1
+
+# =========================================================
+# [핵심] 아까 만든 파이썬 파일 실행하기
+# =========================================================
+# (경로에 주의하세요! bypass.py가 저장된 위치여야 합니다)
+python "execfile('$ORIGIN/bypass.py')"
+
+# 5. 시뮬레이션 시작
+start
