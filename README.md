@@ -37,7 +37,8 @@ BMS · MPPT · 모터 컨트롤러 ──CAN 500k (Bus A)──► FDCAN1 ┐
 | `Core/` | 애플리케이션 코드 (CAN 수신, 패킷 생성, COBS, UART 송신, SD 로거, 신선도, 스케줄러 등) |
 | `Lib/MCP251XFD/` | MCP2518FD 드라이버 (Emandhal/MCP251XFD, 원저작자 코드) |
 | `Drivers/`, `Middlewares/` | STM32 HAL, CMSIS, ThreadX, FileX (ST 제공) |
-| `docs/` | CAN 신호 정리, 계기판 CAN 인터페이스 사양, 무선 패킷 설계 |
+| `docs/` | 요구사항 명세(requirements.md), 설계서(design.md), 단계별 수행 기록(tasks.md), CAN 신호 정리, 계기판 CAN 인터페이스 사양, 무선 패킷 설계 |
+| `example_code/` | 초기 버전: 1차 로거(WSC_V1, FDCAN·링버퍼·SD·LoRa)와 U 시리즈 CAN 시험(wsc_total_test_tx). 현재 펌웨어의 출발점 |
 | `tests/host/` | 호스트 단위 시험(COBS·패킷), 장애 주입·연속성 측정 스크립트, 벤치 시험 기록 |
 | `tests/dummy_nodes/` | 벤치용 BMS·MPPT·모터 더미 노드 (STM32F4) |
 | `tools/` | OpenOCD 기반 실시간 관측 스크립트 |
